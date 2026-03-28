@@ -72,7 +72,7 @@
             border: 2px solid #d4af37;
             z-index: 1;
         }
-        /* 翻牌核心样式，无任何冲突 */
+        /* 翻牌核心样式 */
         .card.flipped .card-back {
             display: none;
         }
@@ -225,14 +225,14 @@
 
 <script>
     // 联机核心
-    const socket = io('https://poker-backend-1xrx.onrender.com');
-    let currentRoomId = null; // 全局房间ID，房主和加入者都必须赋值
+    const socket = io('http://localhost:3001');
+    let currentRoomId = null;
     let isHost = false;
     let inRoom = false;
-    let mySeatIndex = -1; // 自己的座位号
+    let mySeatIndex = -1;
 
     // 全局游戏变量
-    let deckCards = [];
+    let realDeck = []; // 🔥 核心修复：真正的牌堆，存储52张不重复的牌
     let remainingCards = 52;
     let cardTheme = 'standard';
     let localDealQueue = [];
@@ -247,12 +247,11 @@
         socket.emit('createRoom');
     }
 
-    // 🔥 修复1：加入房间时，给全局currentRoomId赋值
     function joinRoom() {
         if (inRoom) return;
         const roomId = document.getElementById('roomIdInput').value.toUpperCase();
         if (!roomId) return alert('请输入房间号！');
-        currentRoomId = roomId; // 核心修复：加入者必须赋值房间ID
+        currentRoomId = roomId;
         socket.emit('joinRoom', roomId);
     }
 
@@ -264,7 +263,6 @@
         document.getElementById('roomIdInput').disabled = true;
     }
 
-    // 房主创建房间成功
     socket.on('roomCreated', (data) => {
         currentRoomId = data.roomId;
         isHost = true;
@@ -280,7 +278,6 @@
         console.log('房主初始化完成，房间ID：', currentRoomId, '我的座位：', mySeatIndex);
     });
 
-    // 加入房间成功
     socket.on('playerJoined', (data) => {
         disableRoomButtons();
         if (!isHost) {
@@ -293,7 +290,6 @@
         }
     });
 
-    // 接收房主同步的游戏配置
     socket.on('syncConfig', (config) => {
         if (!isHost) {
             document.getElementById('playerCount').value = config.playerCount;
@@ -318,7 +314,6 @@
         }
     });
 
-    // 同步已发的牌
     socket.on('syncGameState', (state) => {
         if (!state || isHost) return;
         console.log('非房主收到牌局同步，当前我的座位：', mySeatIndex);
@@ -331,11 +326,9 @@
         }
     });
 
-    // 统一翻牌入口，所有玩家的翻牌都由这个事件触发
     socket.on('cardFlipped', (cardInfo) => {
         const card = document.getElementById(cardInfo.cardId);
         if (!card) return;
-        // 明确切换状态，不用toggle避免混乱
         if (card.classList.contains('flipped')) {
             card.classList.remove('flipped');
         } else {
@@ -358,8 +351,53 @@
         localCurrentStep = 0;
         remainingCards = 52;
         dealtCards = [];
-        createDeck();
+        createRealDeck(); // 🔥 核心修复：初始化真正的52张不重复牌堆
+        createDeckVisual(); // 创建牌堆视觉效果
         createSeats(parseInt(document.getElementById('playerCount').value));
+    }
+
+    // 🔥 核心修复：生成真正的52张不重复扑克牌
+    function createRealDeck() {
+        realDeck = [];
+        // 遍历所有花色和数字，生成完整的一副牌
+        for (let s = 0; s < suits.length; s++) {
+            for (let r = 0; r < ranks.length; r++) {
+                const suit = suits[s];
+                const rank = ranks[r];
+                const color = (suit === '♥' || suit === '♦') ? 'red' : 'black';
+                realDeck.push({
+                    suit: suit,
+                    rank: rank,
+                    color: color,
+                    // 生成HTML内容，直接用，避免重复计算
+                    html: `<span style="color:${color}">${rank}${suit}</span>`
+                });
+            }
+        }
+        // 洗牌：打乱牌堆顺序
+        shuffleDeck(realDeck);
+        console.log('牌堆初始化完成，共', realDeck.length, '张不重复的牌');
+    }
+
+    // 🔥 核心修复：洗牌算法（Fisher-Yates 洗牌，最公平的洗牌方式）
+    function shuffleDeck(arr) {
+        for (let i = arr.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [arr[i], arr[j]] = [arr[j], arr[i]];
+        }
+    }
+
+    // 🔥 核心修复：从牌堆里取一张牌，取一张移除一张，绝对不重复
+    function drawCardFromDeck() {
+        if (realDeck.length === 0) {
+            console.error('牌堆已空！');
+            return null;
+        }
+        // 从牌堆顶部取一张（数组最后一个元素，性能最好）
+        const card = realDeck.pop();
+        remainingCards = realDeck.length;
+        console.log('从牌堆取牌：', card.rank + card.suit, '剩余', remainingCards, '张');
+        return card;
     }
 
     function initTableAndSync() {
@@ -378,7 +416,8 @@
         socket.emit('syncConfig', currentRoomId, config);
     }
 
-    function createDeck() {
+    // 创建牌堆视觉效果（和之前一样，只是视觉）
+    function createDeckVisual() {
         const deck = document.getElementById('deck');
         deck.innerHTML = '';
         cardTheme = document.getElementById('cardTheme').value;
@@ -388,15 +427,6 @@
             card.style.top = `${i * 0.4}px`;
             card.style.left = `${i * 0.2}px`;
             deck.appendChild(card);
-        }
-        deckCards = Array.from({length: 52}, (_, i) => i);
-        shuffle(deckCards);
-    }
-
-    function shuffle(arr) {
-        for (let i = arr.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [arr[i], arr[j]] = [arr[j], arr[i]];
         }
     }
 
@@ -482,17 +512,8 @@
         }
     }
 
-    function getRandomCard() {
-        const suit = suits[Math.floor(Math.random() * suits.length)];
-        const rank = ranks[Math.floor(Math.random() * ranks.length)];
-        const color = (suit === '♥' || suit === '♦') ? 'red' : 'black';
-        return `<span style="color:${color}">${rank}${suit}</span>`;
-    }
-
-    // 🔥 修复2：翻牌请求，增加完整的校验和日志
     function requestFlipCard(cardId, ownerSeatIndex) {
         console.log('点击手牌，卡牌所有者：', ownerSeatIndex, '我的座位：', mySeatIndex, '房间ID：', currentRoomId);
-        // 权限校验
         const isMyCard = ownerSeatIndex === mySeatIndex;
         const isCommunityCard = ownerSeatIndex === undefined;
         const hasRoomId = !!currentRoomId;
@@ -506,17 +527,23 @@
             return;
         }
 
-        // 发送翻牌请求
         console.log('发送翻牌请求，卡牌ID：', cardId);
         socket.emit('flipCard', currentRoomId, { cardId: cardId });
     }
 
-    // 发牌核心逻辑
+    // 🔥 核心修复：发牌时从真正的牌堆里取牌
     function dealCard(targetEl, isCommunity = false, ownerSeatIndex = -1) {
-        if (remainingCards <= 0) return;
+        if (remainingCards <= 0) {
+            alert('牌堆已空！');
+            return;
+        }
         
         const cardId = `card-${Date.now()}-${Math.random()}`;
-        const cardContent = getRandomCard();
+        // 🔥 核心修复：从真正的牌堆里取一张不重复的牌
+        const drawnCard = drawCardFromDeck();
+        if (!drawnCard) return;
+        
+        const cardContent = drawnCard.html;
         const isMyCard = ownerSeatIndex === mySeatIndex;
         const canFlip = isCommunity || isMyCard;
 
@@ -524,8 +551,7 @@
         const card = createCardElement(cardId, cardContent, isCommunity, ownerSeatIndex, canFlip);
         targetEl.appendChild(card);
 
-        // 牌堆变薄
-        remainingCards--;
+        // 牌堆视觉变薄
         const deck = document.getElementById('deck');
         if (deck.firstChild) deck.removeChild(deck.firstChild);
 
@@ -546,7 +572,6 @@
         }
     }
 
-    // 🔥 修复3：卡牌创建函数，用闭包确保参数正确传递
     function createCardElement(cardId, cardContent, isCommunity, ownerSeatIndex, canFlip) {
         const card = document.createElement('div');
         card.id = cardId;
@@ -570,7 +595,7 @@
         card.appendChild(back);
         card.appendChild(front);
 
-        // 绑定点击事件，用立即执行函数确保参数正确
+        // 绑定点击事件
         if (canFlip) {
             (function(cid, osi) {
                 card.onclick = function() {
@@ -582,7 +607,6 @@
         return card;
     }
 
-    // 非房主同步渲染手牌
     function renderCardWithoutAnimation(targetId, isCommunity, cardContent, ownerSeatIndex, isFlipped) {
         const targetEl = document.getElementById(targetId);
         if (!targetEl) return;
@@ -649,6 +673,7 @@
     function stepDeal() {
         if (localCurrentStep >= localDealQueue.length) {
             document.getElementById('dealBtn').innerText = '发牌完成';
+            console.log('发牌完成！');
             return;
         }
         
@@ -661,14 +686,12 @@
         localCurrentStep++;
     }
 
-    // 页面加载自动加入房间
     window.onload = () => {
         initTable();
         const urlParams = new URLSearchParams(window.location.search);
         const roomId = urlParams.get('room');
         if (roomId) {
             document.getElementById('roomIdInput').value = roomId;
-            // 延迟加入，确保socket连接完成
             setTimeout(() => joinRoom(), 800);
         }
     };

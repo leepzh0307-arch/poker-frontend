@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>联机扑克发牌模拟器</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #1a1a2e; font-family: "Microsoft YaHei", sans-serif; padding: 20px; }
+        .poker-table {
+            background: #0f5132;
+            border-radius: 50%/30%;
+            box-shadow: 0 0 50px rgba(0,0,0,0.8) inset, 0 0 30px #000;
+            position: relative;
+            overflow: visible !important;
+            width: 100%;
+            height: 550px;
+            margin: 0 auto;
+        }
+        .card {
+            width: 65px;
+            height: 95px;
+            border-radius: 6px;
+            position: relative;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+        .card:hover {
+            box-shadow: 0 0 12px #fbbf24;
+        }
+        .card.cannot-flip {
+            cursor: not-allowed;
+            opacity: 0.9;
+        }
+        .card.cannot-flip:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+        .card-face {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            font-weight: bold;
+        }
+        .card-back {
+            background: linear-gradient(135deg, #1e3a8a, #3b0764);
+            color: white;
+            z-index: 2;
+        }
+        .card-back-tarot {
+            background: linear-gradient(135deg, #4a044a, #1e1b4b);
+            border: 2px solid #fbbf24;
+            color: #f9d59b;
+            z-index: 2;
+        }
+        .card-back::after { content: "♠♥♦♣"; font-size: 18px; }
+        .card-back-tarot::after { content: "✴"; font-size: 28px; }
+        .card-front {
+            background: white;
+            color: #000;
+            z-index: 1;
+        }
+        .card-front-tarot {
+            background: #2d1b69;
+            color: #f9d59b;
+            border: 2px solid #d4af37;
+            z-index: 1;
+        }
+        /* 翻牌核心样式，无任何冲突 */
+        .card.flipped .card-back {
+            display: none;
+        }
+        .card.flipped .card-front {
+            z-index: 3;
+            display: flex;
+        }
+        .deck { position: absolute; z-index: 5; }
+        .deck-card {
+            width: 65px;
+            height: 95px;
+            position: absolute;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+            background: linear-gradient(135deg, #1e3a8a, #3b0764);
+            border-radius: 6px;
+        }
+        .seat {
+            position: absolute;
+            width: 160px;
+            height: 140px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transform: translate(-50%, -50%);
+        }
+        .seat-label {
+            color: white;
+            font-weight: bold;
+            margin-bottom: 8px;
+            text-shadow: 0 2px 4px #000;
+            font-size: 13px;
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+        .seat-label.mine {
+            background: #fbbf24;
+            color: #000;
+            font-size: 14px;
+        }
+        .player-cards {
+            display: flex;
+            gap: 6px;
+            justify-content: center;
+            width: 100%;
+            height: 95px;
+            position: relative;
+        }
+        #communityArea {
+            gap: 8px !important;
+            transform: translate(-50%, -50%) !important;
+            display: flex;
+        }
+        .btn-disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
+    </style>
+</head>
+<body>
+    <div class="w-full max-w-4xl mx-auto flex flex-col gap-8">
+        
+        <div class="bg-gray-900 rounded-2xl p-6 shadow-2xl text-white w-full">
+            <h2 class="text-2xl font-bold text-yellow-400 mb-6 text-center">🎴 联机扑克发牌模拟器</h2>
+            
+            <div class="mb-6 p-4 bg-gray-800 rounded-xl">
+                <h3 class="text-lg font-semibold mb-3 text-yellow-400">🔗 联机房间</h3>
+                <div id="roomStatus" class="mb-3 text-sm">未连接房间</div>
+                <div class="flex gap-2">
+                    <button id="createRoomBtn" onclick="createRoom()" class="flex-1 bg-blue-600 hover:bg-blue-700 py-2 rounded">创建房间</button>
+                    <input id="roomIdInput" placeholder="输入房间号" class="flex-1 bg-gray-700 rounded p-2 text-center">
+                    <button id="joinRoomBtn" onclick="joinRoom()" class="flex-1 bg-green-600 hover:bg-green-700 py-2 rounded">加入</button>
+                </div>
+                <div id="roomLink" class="mt-3 hidden">
+                    <p class="text-sm mb-1">分享链接给朋友：</p>
+                    <input id="linkInput" readonly class="w-full bg-gray-700 rounded p-2 text-sm">
+                </div>
+            </div>
+
+            <!-- 仅房主可见设置区 -->
+            <div id="hostSettings" class="hidden">
+                <div class="mb-6">
+                    <h3 class="text-lg font-semibold mb-3">基础设置（仅房主可调）</h3>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block mb-2">玩家数量</label>
+                            <input id="playerCount" type="number" min="1" max="10" value="3" class="w-full bg-gray-800 border border-gray-700 rounded p-2">
+                        </div>
+                        <div>
+                            <label class="block mb-2">发牌方向</label>
+                            <select id="direction" class="w-full bg-gray-800 border border-gray-700 rounded p-2">
+                                <option value="clockwise">顺时针</option>
+                                <option value="counter">逆时针</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mt-4">
+                        <label class="flex items-center gap-2">
+                            <input id="enableCommunity" type="checkbox" checked>
+                            <span>启用公共牌区（德州扑克）</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="mb-6">
+                    <h3 class="text-lg font-semibold mb-3">发牌轮次</h3>
+                    <div id="roundContainer" class="space-y-3">
+                        <div class="round-item bg-gray-800 p-3 rounded flex gap-2 items-center">
+                            <select class="round-target bg-gray-700 rounded p-1 flex-1">
+                                <option value="player">发给玩家</option>
+                                <option value="community">发给公共牌区</option>
+                            </select>
+                            <input type="number" min="1" value="2" class="round-count w-16 bg-gray-700 rounded p-1">
+                        </div>
+                    </div>
+                    <button onclick="addRound()" class="mt-2 bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded text-sm">+ 添加轮次</button>
+                </div>
+
+                <div class="mb-6">
+                    <h3 class="text-lg font-semibold mb-3">扑克主题</h3>
+                    <select id="cardTheme" class="w-full bg-gray-800 border border-gray-700 rounded p-2">
+                        <option value="standard">标准扑克</option>
+                        <option value="tarot">塔罗牌风格</option>
+                    </select>
+                </div>
+
+                <div class="mb-6 flex gap-2 flex-wrap">
+                    <button onclick="loadPreset('zhajinhua')" class="bg-purple-600 hover:bg-purple-700 px-3 py-2 rounded flex-1">炸金花预设</button>
+                    <button onclick="loadPreset('texas')" class="bg-red-600 hover:bg-red-700 px-3 py-2 rounded flex-1">德州扑克预设</button>
+                </div>
+
+                <button onclick="initTableAndSync()" class="w-full bg-green-600 hover:bg-green-700 py-3 rounded font-bold">初始化并同步牌桌</button>
+            </div>
+        </div>
+
+        <div class="w-full flex flex-col gap-6">
+            <div class="w-full flex justify-center">
+                <button id="dealBtn" onclick="triggerDeal()" 
+                    class="px-10 py-4 bg-yellow-600 hover:bg-yellow-700 rounded-xl font-bold text-lg shadow-lg hidden">
+                    开始发牌
+                </button>
+            </div>
+
+            <div class="poker-table relative" id="table">
+                <div id="deck" class="deck top-1/2 left-1/2 translate-x-[-50%] translate-y-[-50%]"></div>
+                <div id="communityArea" class="absolute top-1/2 left-1/2 flex gap-3 min-h-[100px]"></div>
+                <div id="seats"></div>
+            </div>
+
+            <p class="text-white text-center text-sm">✨ 只有自己的手牌可以点击查看 | 公共牌所有人可见</p>
+        </div>
+    </div>
+
+<script>
+    // 联机核心
+    const socket = io('https://poker-backend-1xrx.onrender.com');
+    let currentRoomId = null; // 全局房间ID，房主和加入者都必须赋值
+    let isHost = false;
+    let inRoom = false;
+    let mySeatIndex = -1; // 自己的座位号
+
+    // 全局游戏变量
+    let deckCards = [];
+    let remainingCards = 52;
+    let cardTheme = 'standard';
+    let localDealQueue = [];
+    let localCurrentStep = 0;
+    let dealtCards = [];
+    const suits = ['♠', '♥', '♦', '♣'];
+    const ranks = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+
+    // --- 联机功能 ---
+    function createRoom() {
+        if (inRoom) return;
+        socket.emit('createRoom');
+    }
+
+    // 🔥 修复1：加入房间时，给全局currentRoomId赋值
+    function joinRoom() {
+        if (inRoom) return;
+        const roomId = document.getElementById('roomIdInput').value.toUpperCase();
+        if (!roomId) return alert('请输入房间号！');
+        currentRoomId = roomId; // 核心修复：加入者必须赋值房间ID
+        socket.emit('joinRoom', roomId);
+    }
+
+    function disableRoomButtons() {
+        inRoom = true;
+        document.getElementById('createRoomBtn').classList.add('btn-disabled');
+        document.getElementById('joinRoomBtn').classList.add('btn-disabled');
+        document.getElementById('roomIdInput').classList.add('btn-disabled');
+        document.getElementById('roomIdInput').disabled = true;
+    }
+
+    // 房主创建房间成功
+    socket.on('roomCreated', (data) => {
+        currentRoomId = data.roomId;
+        isHost = true;
+        mySeatIndex = 0;
+        disableRoomButtons();
+        document.getElementById('roomStatus').innerText = `✅ 已创建房间：${data.roomId}（你是房主，座位：玩家1）`;
+        document.getElementById('roomLink').classList.remove('hidden');
+        const link = `${window.location.href}?room=${data.roomId}`;
+        document.getElementById('linkInput').value = link;
+        document.getElementById('hostSettings').classList.remove('hidden');
+        document.getElementById('dealBtn').style.display = 'block';
+        initTable();
+        console.log('房主初始化完成，房间ID：', currentRoomId, '我的座位：', mySeatIndex);
+    });
+
+    // 加入房间成功
+    socket.on('playerJoined', (data) => {
+        disableRoomButtons();
+        if (!isHost) {
+            mySeatIndex = data.mySeatIndex;
+            document.getElementById('roomStatus').innerText = `✅ 已加入房间！你的座位：玩家${mySeatIndex + 1}`;
+            document.getElementById('dealBtn').style.display = 'none';
+            console.log('加入者初始化完成，房间ID：', currentRoomId, '我的座位：', mySeatIndex);
+        } else {
+            document.getElementById('roomStatus').innerText = `✅ 房间内人数：${data.count}`;
+        }
+    });
+
+    // 接收房主同步的游戏配置
+    socket.on('syncConfig', (config) => {
+        if (!isHost) {
+            document.getElementById('playerCount').value = config.playerCount;
+            document.getElementById('direction').value = config.direction;
+            document.getElementById('enableCommunity').checked = config.enableCommunity;
+            document.getElementById('cardTheme').value = config.cardTheme;
+            const container = document.getElementById('roundContainer');
+            container.innerHTML = '';
+            config.rounds.forEach(r => {
+                const item = document.createElement('div');
+                item.className = 'round-item bg-gray-800 p-3 rounded flex gap-2 items-center';
+                item.innerHTML = `
+                    <select class="round-target bg-gray-700 rounded p-1 flex-1" disabled>
+                        <option value="player" ${r.target==='player'?'selected':''}>发给玩家</option>
+                        <option value="community" ${r.target==='community'?'selected':''}>发给公共牌区</option>
+                    </select>
+                    <input type="number" value="${r.count}" class="round-count w-16 bg-gray-700 rounded p-1" disabled>
+                `;
+                container.appendChild(item);
+            });
+            initTable();
+        }
+    });
+
+    // 同步已发的牌
+    socket.on('syncGameState', (state) => {
+        if (!state || isHost) return;
+        console.log('非房主收到牌局同步，当前我的座位：', mySeatIndex);
+        if (dealtCards.length < (state.dealtCards || []).length) {
+            const newCards = (state.dealtCards || []).slice(dealtCards.length);
+            newCards.forEach((dealt) => {
+                renderCardWithoutAnimation(dealt.targetId, dealt.isCommunity, dealt.cardContent, dealt.ownerSeatIndex, dealt.isFlipped);
+            });
+            dealtCards = state.dealtCards || [];
+        }
+    });
+
+    // 统一翻牌入口，所有玩家的翻牌都由这个事件触发
+    socket.on('cardFlipped', (cardInfo) => {
+        const card = document.getElementById(cardInfo.cardId);
+        if (!card) return;
+        // 明确切换状态，不用toggle避免混乱
+        if (card.classList.contains('flipped')) {
+            card.classList.remove('flipped');
+        } else {
+            card.classList.add('flipped');
+        }
+        console.log('翻牌完成，卡牌ID：', cardInfo.cardId, '当前状态：', card.classList.contains('flipped'));
+    });
+
+    socket.on('error', (msg) => {
+        alert(msg);
+    });
+
+    // --- 游戏核心功能 ---
+    function initTable() {
+        document.getElementById('seats').innerHTML = '';
+        document.getElementById('communityArea').innerHTML = '';
+        document.getElementById('deck').innerHTML = '';
+        document.getElementById('dealBtn').innerText = '开始发牌';
+        localDealQueue = [];
+        localCurrentStep = 0;
+        remainingCards = 52;
+        dealtCards = [];
+        createDeck();
+        createSeats(parseInt(document.getElementById('playerCount').value));
+    }
+
+    function initTableAndSync() {
+        initTable();
+        const rounds = Array.from(document.querySelectorAll('.round-item')).map(r => ({
+            target: r.querySelector('.round-target').value,
+            count: parseInt(r.querySelector('.round-count').value)
+        }));
+        const config = {
+            playerCount: parseInt(document.getElementById('playerCount').value),
+            direction: document.getElementById('direction').value,
+            enableCommunity: document.getElementById('enableCommunity').checked,
+            cardTheme: document.getElementById('cardTheme').value,
+            rounds: rounds
+        };
+        socket.emit('syncConfig', currentRoomId, config);
+    }
+
+    function createDeck() {
+        const deck = document.getElementById('deck');
+        deck.innerHTML = '';
+        cardTheme = document.getElementById('cardTheme').value;
+        for (let i = 0; i < 52; i++) {
+            const card = document.createElement('div');
+            card.className = 'deck-card';
+            card.style.top = `${i * 0.4}px`;
+            card.style.left = `${i * 0.2}px`;
+            deck.appendChild(card);
+        }
+        deckCards = Array.from({length: 52}, (_, i) => i);
+        shuffle(deckCards);
+    }
+
+    function shuffle(arr) {
+        for (let i = arr.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [arr[i], arr[j]] = [arr[j], arr[i]];
+        }
+    }
+
+    function createSeats(count) {
+        const seats = document.getElementById('seats');
+        const table = document.querySelector('.poker-table');
+        const centerX = table.offsetWidth / 2;
+        const centerY = table.offsetHeight / 2;
+        const radius = 240;
+
+        for (let i = 0; i < count; i++) {
+            const angle = (360 / count) * i - 90;
+            const x = centerX + radius * Math.cos(angle * Math.PI / 180);
+            const y = centerY + radius * Math.sin(angle * Math.PI / 180);
+
+            const seat = document.createElement('div');
+            seat.className = 'seat';
+            seat.style.left = `${x}px`;
+            seat.style.top = `${y}px`;
+            
+            const isMySeat = (i === mySeatIndex);
+            seat.innerHTML = `
+                <div class="seat-label ${isMySeat ? 'mine' : ''}">
+                    ${isMySeat ? '👤 我 (玩家' + (i+1) + ')' : '玩家 ' + (i+1)}
+                </div>
+                <div class="player-cards" id="player-${i}" data-seat="${i}"></div>
+            `;
+            seats.appendChild(seat);
+        }
+    }
+
+    function addRound() {
+        if (!isHost) return;
+        const container = document.getElementById('roundContainer');
+        const item = document.createElement('div');
+        item.className = 'round-item bg-gray-800 p-3 rounded flex gap-2 items-center';
+        item.innerHTML = `
+            <select class="round-target bg-gray-700 rounded p-1 flex-1">
+                <option value="player">发给玩家</option>
+                <option value="community">发给公共牌区</option>
+            </select>
+            <input type="number" min="1" value="1" class="round-count w-16 bg-gray-700 rounded p-1">
+        `;
+        container.appendChild(item);
+    }
+
+    function loadPreset(type) {
+        if (!isHost) return;
+        const container = document.getElementById('roundContainer');
+        container.innerHTML = '';
+        document.getElementById('enableCommunity').checked = false;
+
+        if (type === 'zhajinhua') {
+            document.getElementById('playerCount').value = 3;
+            container.innerHTML = `
+                <div class="round-item bg-gray-800 p-3 rounded flex gap-2 items-center">
+                    <select class="round-target bg-gray-700 rounded p-1 flex-1"><option value="player">发给玩家</option></select>
+                    <input type="number" value="3" class="round-count w-16 bg-gray-700 rounded p-1">
+                </div>
+            `;
+        }
+        if (type === 'texas') {
+            document.getElementById('playerCount').value = 4;
+            document.getElementById('enableCommunity').checked = true;
+            container.innerHTML = `
+                <div class="round-item bg-gray-800 p-3 rounded flex gap-2 items-center">
+                    <select class="round-target bg-gray-700 rounded p-1 flex-1"><option value="player">发给玩家</option></select>
+                    <input type="number" value="2" class="round-count w-16 bg-gray-700 rounded p-1">
+                </div>
+                <div class="round-item bg-gray-800 p-3 rounded flex gap-2 items-center">
+                    <select class="round-target bg-gray-700 rounded p-1 flex-1"><option value="community">发给公共牌区</option></select>
+                    <input type="number" value="3" class="round-count w-16 bg-gray-700 rounded p-1">
+                </div>
+                <div class="round-item bg-gray-800 p-3 rounded flex gap-2 items-center">
+                    <select class="round-target bg-gray-700 rounded p-1 flex-1"><option value="community">发给公共牌区</option></select>
+                    <input type="number" value="1" class="round-count w-16 bg-gray-700 rounded p-1">
+                </div>
+                <div class="round-item bg-gray-800 p-3 rounded flex gap-2 items-center">
+                    <select class="round-target bg-gray-700 rounded p-1 flex-1"><option value="community">发给公共牌区</option></select>
+                    <input type="number" value="1" class="round-count w-16 bg-gray-700 rounded p-1">
+                </div>
+            `;
+        }
+    }
+
+    function getRandomCard() {
+        const suit = suits[Math.floor(Math.random() * suits.length)];
+        const rank = ranks[Math.floor(Math.random() * ranks.length)];
+        const color = (suit === '♥' || suit === '♦') ? 'red' : 'black';
+        return `<span style="color:${color}">${rank}${suit}</span>`;
+    }
+
+    // 🔥 修复2：翻牌请求，增加完整的校验和日志
+    function requestFlipCard(cardId, ownerSeatIndex) {
+        console.log('点击手牌，卡牌所有者：', ownerSeatIndex, '我的座位：', mySeatIndex, '房间ID：', currentRoomId);
+        // 权限校验
+        const isMyCard = ownerSeatIndex === mySeatIndex;
+        const isCommunityCard = ownerSeatIndex === undefined;
+        const hasRoomId = !!currentRoomId;
+
+        if (!hasRoomId) {
+            console.error('翻牌失败：房间ID为空');
+            return;
+        }
+        if (!isCommunityCard && !isMyCard) {
+            console.error('翻牌失败：不是自己的手牌');
+            return;
+        }
+
+        // 发送翻牌请求
+        console.log('发送翻牌请求，卡牌ID：', cardId);
+        socket.emit('flipCard', currentRoomId, { cardId: cardId });
+    }
+
+    // 发牌核心逻辑
+    function dealCard(targetEl, isCommunity = false, ownerSeatIndex = -1) {
+        if (remainingCards <= 0) return;
+        
+        const cardId = `card-${Date.now()}-${Math.random()}`;
+        const cardContent = getRandomCard();
+        const isMyCard = ownerSeatIndex === mySeatIndex;
+        const canFlip = isCommunity || isMyCard;
+
+        // 创建卡牌
+        const card = createCardElement(cardId, cardContent, isCommunity, ownerSeatIndex, canFlip);
+        targetEl.appendChild(card);
+
+        // 牌堆变薄
+        remainingCards--;
+        const deck = document.getElementById('deck');
+        if (deck.firstChild) deck.removeChild(deck.firstChild);
+
+        // 记录并同步
+        dealtCards.push({
+            targetId: targetEl.id,
+            isCommunity: isCommunity,
+            cardContent: cardContent,
+            cardId: cardId,
+            ownerSeatIndex: ownerSeatIndex,
+            isFlipped: isCommunity
+        });
+
+        if (isHost && currentRoomId) {
+            socket.emit('updateGameState', currentRoomId, {
+                dealtCards: dealtCards
+            });
+        }
+    }
+
+    // 🔥 修复3：卡牌创建函数，用闭包确保参数正确传递
+    function createCardElement(cardId, cardContent, isCommunity, ownerSeatIndex, canFlip) {
+        const card = document.createElement('div');
+        card.id = cardId;
+        card.className = 'card';
+        
+        if (isCommunity) {
+            card.classList.add('flipped');
+        }
+        
+        if (!canFlip) {
+            card.classList.add('cannot-flip');
+        }
+
+        // 创建正反面
+        const back = document.createElement('div');
+        const front = document.createElement('div');
+        back.className = cardTheme === 'tarot' ? 'card-face card-back-tarot' : 'card-face card-back';
+        front.className = cardTheme === 'tarot' ? 'card-face card-front-tarot' : 'card-face card-front';
+        front.innerHTML = cardContent;
+        
+        card.appendChild(back);
+        card.appendChild(front);
+
+        // 绑定点击事件，用立即执行函数确保参数正确
+        if (canFlip) {
+            (function(cid, osi) {
+                card.onclick = function() {
+                    requestFlipCard(cid, osi);
+                };
+            })(cardId, ownerSeatIndex);
+        }
+
+        return card;
+    }
+
+    // 非房主同步渲染手牌
+    function renderCardWithoutAnimation(targetId, isCommunity, cardContent, ownerSeatIndex, isFlipped) {
+        const targetEl = document.getElementById(targetId);
+        if (!targetEl) return;
+
+        const isMyCard = ownerSeatIndex === mySeatIndex;
+        const canFlip = isCommunity || isMyCard;
+        const cardId = `card-sync-${Date.now()}-${Math.random()}`;
+        
+        const card = createCardElement(cardId, cardContent, isCommunity, ownerSeatIndex, canFlip);
+        
+        if (isFlipped) {
+            card.classList.add('flipped');
+        }
+        
+        targetEl.appendChild(card);
+    }
+
+    function generateLocalDealQueue() {
+        localDealQueue = [];
+        localCurrentStep = 0;
+        const enableCommunity = document.getElementById('enableCommunity').checked;
+        const direction = document.getElementById('direction').value;
+        const rounds = Array.from(document.querySelectorAll('.round-item'));
+        const players = document.querySelectorAll('.player-cards');
+        const community = document.getElementById('communityArea');
+
+        for (let roundIndex = 0; roundIndex < rounds.length; roundIndex++) {
+            const round = rounds[roundIndex];
+            const target = round.querySelector('.round-target').value;
+            const count = parseInt(round.querySelector('.round-count').value);
+
+            for (let c = 0; c < count; c++) {
+                if (target === 'player') {
+                    const order = direction === 'clockwise' ? Array.from(players) : Array.from(players).reverse();
+                    order.forEach((playerEl) => {
+                        const seatIndex = parseInt(playerEl.dataset.seat);
+                        localDealQueue.push({ 
+                            type: 'player', 
+                            target: playerEl,
+                            ownerSeatIndex: seatIndex
+                        });
+                    });
+                } else if (target === 'community' && enableCommunity) {
+                    localDealQueue.push({ 
+                        type: 'community', 
+                        target: community
+                    });
+                }
+            }
+        }
+    }
+
+    function triggerDeal() {
+        if (!isHost) return;
+        
+        if (localDealQueue.length === 0) {
+            generateLocalDealQueue();
+            document.getElementById('dealBtn').innerText = '下一步发牌';
+        }
+        
+        stepDeal();
+    }
+
+    function stepDeal() {
+        if (localCurrentStep >= localDealQueue.length) {
+            document.getElementById('dealBtn').innerText = '发牌完成';
+            return;
+        }
+        
+        const step = localDealQueue[localCurrentStep];
+        if (step.type === 'player') {
+            dealCard(step.target, false, step.ownerSeatIndex);
+        } else {
+            dealCard(step.target, true);
+        }
+        localCurrentStep++;
+    }
+
+    // 页面加载自动加入房间
+    window.onload = () => {
+        initTable();
+        const urlParams = new URLSearchParams(window.location.search);
+        const roomId = urlParams.get('room');
+        if (roomId) {
+            document.getElementById('roomIdInput').value = roomId;
+            // 延迟加入，确保socket连接完成
+            setTimeout(() => joinRoom(), 800);
+        }
+    };
+</script>
+</body>
+</html>

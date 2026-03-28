@@ -27,7 +27,11 @@
             cursor: pointer;
             box-shadow: 0 2px 8px rgba(0,0,0,0.3);
         }
-        .card:hover {
+        /* 房主专属：其他玩家手牌悬停高亮 */
+        .card.host-can-flip:hover {
+            box-shadow: 0 0 12px #ef4444;
+        }
+        .card.can-flip:hover {
             box-shadow: 0 0 12px #fbbf24;
         }
         .card.cannot-flip {
@@ -127,6 +131,16 @@
             display: flex;
         }
         .btn-disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
+        /* 房主专属提示样式 */
+        .host-tip {
+            background: #ef4444;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            margin-top: 4px;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
@@ -138,6 +152,10 @@
             <div class="mb-6 p-4 bg-gray-800 rounded-xl">
                 <h3 class="text-lg font-semibold mb-3 text-yellow-400">🔗 联机房间</h3>
                 <div id="roomStatus" class="mb-3 text-sm">未连接房间</div>
+                <!-- 房主专属权利提示 -->
+                <div id="hostTip" class="host-tip hidden">
+                    👑 房主专属权利：点击任意玩家的手牌，可强制公布给所有成员
+                </div>
                 <div class="flex gap-2">
                     <button id="createRoomBtn" onclick="createRoom()" class="flex-1 bg-blue-600 hover:bg-blue-700 py-2 rounded">创建房间</button>
                     <input id="roomIdInput" placeholder="输入房间号" class="flex-1 bg-gray-700 rounded p-2 text-center">
@@ -219,20 +237,20 @@
                 <div id="seats"></div>
             </div>
 
-            <p class="text-white text-center text-sm">✨ 只有自己的手牌可以点击查看 | 公共牌所有人可见</p>
+            <p class="text-white text-center text-sm">✨ 只有自己的手牌可以点击查看 | 房主可强制公布任意玩家手牌</p>
         </div>
     </div>
 
 <script>
     // 联机核心
-    const socket = io('http://localhost:3001');
+    const socket = io('https://poker-backend-1xrx.onrender.com'); // 这里替换成你自己的Render后端地址
     let currentRoomId = null;
     let isHost = false;
     let inRoom = false;
     let mySeatIndex = -1;
 
     // 全局游戏变量
-    let realDeck = []; // 🔥 核心修复：真正的牌堆，存储52张不重复的牌
+    let realDeck = []; // 真正的牌堆，52张不重复
     let remainingCards = 52;
     let cardTheme = 'standard';
     let localDealQueue = [];
@@ -268,6 +286,8 @@
         isHost = true;
         mySeatIndex = 0;
         disableRoomButtons();
+        // 显示房主专属提示
+        document.getElementById('hostTip').classList.remove('hidden');
         document.getElementById('roomStatus').innerText = `✅ 已创建房间：${data.roomId}（你是房主，座位：玩家1）`;
         document.getElementById('roomLink').classList.remove('hidden');
         const link = `${window.location.href}?room=${data.roomId}`;
@@ -326,15 +346,22 @@
         }
     });
 
+    // 统一翻牌同步入口
     socket.on('cardFlipped', (cardInfo) => {
         const card = document.getElementById(cardInfo.cardId);
         if (!card) return;
+        // 切换翻牌状态
         if (card.classList.contains('flipped')) {
             card.classList.remove('flipped');
         } else {
             card.classList.add('flipped');
         }
-        console.log('翻牌完成，卡牌ID：', cardInfo.cardId, '当前状态：', card.classList.contains('flipped'));
+        // 更新本地牌局状态
+        const cardIndex = dealtCards.findIndex(item => item.cardId === cardInfo.cardId);
+        if (cardIndex !== -1) {
+            dealtCards[cardIndex].isFlipped = !dealtCards[cardIndex].isFlipped;
+        }
+        console.log('翻牌同步完成，卡牌ID：', cardInfo.cardId, '当前状态：', card.classList.contains('flipped'));
     });
 
     socket.on('error', (msg) => {
@@ -351,15 +378,14 @@
         localCurrentStep = 0;
         remainingCards = 52;
         dealtCards = [];
-        createRealDeck(); // 🔥 核心修复：初始化真正的52张不重复牌堆
-        createDeckVisual(); // 创建牌堆视觉效果
+        createRealDeck(); // 初始化52张不重复牌堆
+        createDeckVisual(); // 创建牌堆视觉
         createSeats(parseInt(document.getElementById('playerCount').value));
     }
 
-    // 🔥 核心修复：生成真正的52张不重复扑克牌
+    // 生成真正的52张不重复扑克牌
     function createRealDeck() {
         realDeck = [];
-        // 遍历所有花色和数字，生成完整的一副牌
         for (let s = 0; s < suits.length; s++) {
             for (let r = 0; r < ranks.length; r++) {
                 const suit = suits[s];
@@ -369,17 +395,15 @@
                     suit: suit,
                     rank: rank,
                     color: color,
-                    // 生成HTML内容，直接用，避免重复计算
                     html: `<span style="color:${color}">${rank}${suit}</span>`
                 });
             }
         }
-        // 洗牌：打乱牌堆顺序
         shuffleDeck(realDeck);
         console.log('牌堆初始化完成，共', realDeck.length, '张不重复的牌');
     }
 
-    // 🔥 核心修复：洗牌算法（Fisher-Yates 洗牌，最公平的洗牌方式）
+    // Fisher-Yates 洗牌算法
     function shuffleDeck(arr) {
         for (let i = arr.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
@@ -387,13 +411,12 @@
         }
     }
 
-    // 🔥 核心修复：从牌堆里取一张牌，取一张移除一张，绝对不重复
+    // 从牌堆取牌，取一张移除一张
     function drawCardFromDeck() {
         if (realDeck.length === 0) {
             console.error('牌堆已空！');
             return null;
         }
-        // 从牌堆顶部取一张（数组最后一个元素，性能最好）
         const card = realDeck.pop();
         remainingCards = realDeck.length;
         console.log('从牌堆取牌：', card.rank + card.suit, '剩余', remainingCards, '张');
@@ -416,7 +439,7 @@
         socket.emit('syncConfig', currentRoomId, config);
     }
 
-    // 创建牌堆视觉效果（和之前一样，只是视觉）
+    // 创建牌堆视觉效果
     function createDeckVisual() {
         const deck = document.getElementById('deck');
         deck.innerHTML = '';
@@ -512,26 +535,39 @@
         }
     }
 
+    // 🔥 核心修改：翻牌权限判断，房主可翻所有牌
     function requestFlipCard(cardId, ownerSeatIndex) {
-        console.log('点击手牌，卡牌所有者：', ownerSeatIndex, '我的座位：', mySeatIndex, '房间ID：', currentRoomId);
-        const isMyCard = ownerSeatIndex === mySeatIndex;
-        const isCommunityCard = ownerSeatIndex === undefined;
+        console.log('点击手牌，卡牌所有者：', ownerSeatIndex, '我的座位：', mySeatIndex, '是否房主：', isHost);
         const hasRoomId = !!currentRoomId;
-
         if (!hasRoomId) {
             console.error('翻牌失败：房间ID为空');
             return;
         }
-        if (!isCommunityCard && !isMyCard) {
-            console.error('翻牌失败：不是自己的手牌');
+
+        // 权限判断
+        let hasPermission = false;
+        const isCommunityCard = ownerSeatIndex === undefined;
+        const isMyCard = ownerSeatIndex === mySeatIndex;
+
+        if (isHost) {
+            // 房主：所有牌都有权限
+            hasPermission = true;
+        } else {
+            // 普通玩家：只能翻自己的牌和公共牌
+            hasPermission = isCommunityCard || isMyCard;
+        }
+
+        if (!hasPermission) {
+            console.error('翻牌失败：无权限');
             return;
         }
 
+        // 发送翻牌请求
         console.log('发送翻牌请求，卡牌ID：', cardId);
-        socket.emit('flipCard', currentRoomId, { cardId: cardId });
+        socket.emit('flipCard', currentRoomId, { cardId: cardId, ownerSeatIndex: ownerSeatIndex });
     }
 
-    // 🔥 核心修复：发牌时从真正的牌堆里取牌
+    // 发牌核心逻辑
     function dealCard(targetEl, isCommunity = false, ownerSeatIndex = -1) {
         if (remainingCards <= 0) {
             alert('牌堆已空！');
@@ -539,16 +575,24 @@
         }
         
         const cardId = `card-${Date.now()}-${Math.random()}`;
-        // 🔥 核心修复：从真正的牌堆里取一张不重复的牌
         const drawnCard = drawCardFromDeck();
         if (!drawnCard) return;
         
         const cardContent = drawnCard.html;
         const isMyCard = ownerSeatIndex === mySeatIndex;
-        const canFlip = isCommunity || isMyCard;
+
+        // 🔥 核心修改：房主可翻所有牌，普通玩家只能翻自己的
+        let canFlip = false;
+        let isHostCanFlip = false;
+        if (isHost) {
+            canFlip = true;
+            isHostCanFlip = !isMyCard && !isCommunity; // 其他玩家的牌，房主专属高亮
+        } else {
+            canFlip = isCommunity || isMyCard;
+        }
 
         // 创建卡牌
-        const card = createCardElement(cardId, cardContent, isCommunity, ownerSeatIndex, canFlip);
+        const card = createCardElement(cardId, cardContent, isCommunity, ownerSeatIndex, canFlip, isHostCanFlip);
         targetEl.appendChild(card);
 
         // 牌堆视觉变薄
@@ -572,7 +616,8 @@
         }
     }
 
-    function createCardElement(cardId, cardContent, isCommunity, ownerSeatIndex, canFlip) {
+    // 卡牌创建函数
+    function createCardElement(cardId, cardContent, isCommunity, ownerSeatIndex, canFlip, isHostCanFlip) {
         const card = document.createElement('div');
         card.id = cardId;
         card.className = 'card';
@@ -581,7 +626,14 @@
             card.classList.add('flipped');
         }
         
-        if (!canFlip) {
+        // 样式类
+        if (canFlip) {
+            if (isHostCanFlip) {
+                card.classList.add('host-can-flip');
+            } else {
+                card.classList.add('can-flip');
+            }
+        } else {
             card.classList.add('cannot-flip');
         }
 
@@ -607,15 +659,24 @@
         return card;
     }
 
+    // 非房主同步渲染手牌
     function renderCardWithoutAnimation(targetId, isCommunity, cardContent, ownerSeatIndex, isFlipped) {
         const targetEl = document.getElementById(targetId);
         if (!targetEl) return;
 
         const isMyCard = ownerSeatIndex === mySeatIndex;
-        const canFlip = isCommunity || isMyCard;
+        // 权限判断
+        let canFlip = false;
+        let isHostCanFlip = false;
+        if (isHost) {
+            canFlip = true;
+            isHostCanFlip = !isMyCard && !isCommunity;
+        } else {
+            canFlip = isCommunity || isMyCard;
+        }
         const cardId = `card-sync-${Date.now()}-${Math.random()}`;
         
-        const card = createCardElement(cardId, cardContent, isCommunity, ownerSeatIndex, canFlip);
+        const card = createCardElement(cardId, cardContent, isCommunity, ownerSeatIndex, canFlip, isHostCanFlip);
         
         if (isFlipped) {
             card.classList.add('flipped');

@@ -147,6 +147,9 @@
             gap: 8px !important;
             transform: translate(-50%, -50%) !important;
             display: flex;
+            top: 50%;
+            left: 50%;
+            position: absolute;
         }
         .btn-disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
         /* 房主专属提示样式 */
@@ -412,7 +415,7 @@
     let localAudioTrack = null;
     let isMicOn = false;
     let isSpeakerOn = true;
-    const AGORA_APP_ID = 'b36db247620e4c78a58d146a3c602f93'; // 🔥 必须替换！
+    const AGORA_APP_ID = 'b36db247620e4c78a58d146a3c602f93'; // 请替换为自己的声网AppID
 
     // 全局游戏变量
     let realDeck = [];
@@ -545,7 +548,12 @@
         document.getElementById('voteButtons').classList.add('hidden');
         document.getElementById('voteResult').classList.remove('hidden');
         document.getElementById('voteResult').querySelector('p').innerText = 
-            result.approved ? '✅ 投票通过！同意的玩家手牌已公布' : '❌ 投票未通过，手牌不公布';
+            result.approved ? '✅ 投票通过！所有玩家手牌已公布' : '❌ 投票未通过，手牌不公布';
+        
+        // 投票通过则自动翻牌
+        if (result.approved) {
+            flipAllCards();
+        }
         
         // 3秒后关闭弹窗
         setTimeout(() => {
@@ -618,7 +626,7 @@
 
         } catch (error) {
             console.error('加入语音频道失败：', error);
-            updateVoiceStatus('❌ 加入语音失败，请检查AppID');
+            updateVoiceStatus('❌ 加入语音失败，请检查AppID或网络');
         }
     }
 
@@ -661,6 +669,16 @@
         if (!agoraClient) return;
 
         isSpeakerOn = !isSpeakerOn;
+        // 控制所有远端音频的播放状态
+        const remoteAudioTracks = agoraClient.remoteTracks.filter(track => track.kind === 'audio');
+        remoteAudioTracks.forEach(track => {
+            if (isSpeakerOn) {
+                track.play();
+            } else {
+                track.pause();
+            }
+        });
+
         if (isSpeakerOn) {
             document.getElementById('speakerBtn').innerText = '🔊 开启扬声器';
             document.getElementById('speakerBtn').classList.remove('host-btn-primary');
@@ -683,16 +701,6 @@
         console.log('语音状态：', text);
     }
 
-    // 页面关闭时自动离开语音频道
-    window.onbeforeunload = async () => {
-        if (agoraClient) {
-            if (localAudioTrack) {
-                localAudioTrack.close();
-            }
-            await agoraClient.leave();
-        }
-    };
-
     // --- 游戏核心功能 ---
     function initTable() {
         document.getElementById('seats').innerHTML = '';
@@ -706,6 +714,7 @@
         createRealDeck();
         createDeckVisual();
         createSeats(parseInt(document.getElementById('playerCount').value));
+        initDragAndDrop(); // 初始化拖拽功能
     }
 
     function createRealDeck() {
@@ -857,7 +866,7 @@
         }
     }
 
-    // --- 新功能1：投票系统 ---
+    // --- 投票系统 ---
     function startVote() {
         if (!isHost || !currentRoomId) return;
         socket.emit('startVote', currentRoomId);
@@ -872,266 +881,279 @@
         document.getElementById('voteResult').querySelector('p').innerText = '已提交投票，等待其他玩家...';
     }
 
-    // --- 翻牌权限判断 ---
+    // --- 翻牌逻辑 ---
     function requestFlipCard(cardId, ownerSeatIndex) {
         console.log('点击手牌，卡牌所有者：', ownerSeatIndex, '我的座位：', mySeatIndex, '是否房主：', isHost);
         const hasRoomId = !!currentRoomId;
         if (!hasRoomId) {
-            console.error('翻牌失败：房间ID为空');
+            alert('请先加入或创建房间！');
             return;
         }
 
-        let hasPermission = false;
-        const isCommunityCard = ownerSeatIndex === undefined;
-        const isMyCard = ownerSeatIndex === mySeatIndex;
-
-        if (isHost) {
-            hasPermission = true;
-        } else {
-            hasPermission = isCommunityCard || isMyCard;
-        }
-
-        if (!hasPermission) {
-            console.error('翻牌失败：无权限');
+        // 权限判断：自己的牌 或 房主可以翻任意牌
+        const canFlip = (ownerSeatIndex === mySeatIndex) || isHost;
+        if (!canFlip) {
+            console.log('无权限翻牌：不是自己的牌且不是房主');
             return;
         }
 
-        console.log('发送翻牌请求，卡牌ID：', cardId);
-        socket.emit('flipCard', currentRoomId, { cardId: cardId, ownerSeatIndex: ownerSeatIndex });
+        // 发送翻牌指令到后端同步
+        socket.emit('flipCard', currentRoomId, {
+            cardId: cardId,
+            seatIndex: mySeatIndex,
+            isHost: isHost
+        });
     }
 
-    // --- 发牌核心逻辑 ---
-    function dealCard(targetEl, isCommunity = false, ownerSeatIndex = -1) {
-        if (remainingCards <= 0) {
-            alert('牌堆已空！');
-            return;
-        }
+    // 投票通过后翻所有牌
+    function flipAllCards() {
+        document.querySelectorAll('.card').forEach(card => {
+            if (!card.classList.contains('flipped')) {
+                const cardId = card.id;
+                // 同步翻牌状态到后端
+                socket.emit('flipCard', currentRoomId, {
+                    cardId: cardId,
+                    seatIndex: mySeatIndex,
+                    isHost: isHost
+                });
+            }
+        });
+    }
+
+    // --- 发牌逻辑 ---
+    function triggerDeal() {
+        if (!isHost || !currentRoomId) return;
         
-        const cardId = `card-${Date.now()}-${Math.random()}`;
-        const drawnCard = drawCardFromDeck();
-        if (!drawnCard) return;
+        // 构建发牌队列
+        const rounds = Array.from(document.querySelectorAll('.round-item')).map(r => ({
+            target: r.querySelector('.round-target').value,
+            count: parseInt(r.querySelector('.round-count').value)
+        }));
         
-        const cardContent = drawnCard.html;
-        const isMyCard = ownerSeatIndex === mySeatIndex;
-
-        let canFlip = false;
-        let isHostCanFlip = false;
-        let isDraggable = false;
-        if (isHost) {
-            canFlip = true;
-            isHostCanFlip = !isMyCard && !isCommunity;
-            isDraggable = isCommunity; // 只有公共牌可拖拽
-        } else {
-            canFlip = isCommunity || isMyCard;
-        }
-
-        const card = createCardElement(cardId, cardContent, isCommunity, ownerSeatIndex, canFlip, isHostCanFlip, isDraggable);
-        targetEl.appendChild(card);
-
-        const deck = document.getElementById('deck');
-        if (deck.firstChild) deck.removeChild(deck.firstChild);
-
-        dealtCards.push({
-            targetId: targetEl.id,
-            isCommunity: isCommunity,
-            cardContent: cardContent,
-            cardId: cardId,
-            ownerSeatIndex: ownerSeatIndex,
-            isFlipped: isCommunity
+        localDealQueue = [];
+        const playerCount = parseInt(document.getElementById('playerCount').value);
+        const direction = document.getElementById('direction').value;
+        
+        // 生成发牌队列
+        rounds.forEach(round => {
+            if (round.target === 'player') {
+                // 给每个玩家发N张牌
+                for (let i = 0; i < round.count; i++) {
+                    for (let seatIdx = 0; seatIdx < playerCount; seatIdx++) {
+                        // 处理发牌方向
+                        const actualSeatIdx = direction === 'clockwise' 
+                            ? seatIdx 
+                            : (playerCount - 1 - seatIdx);
+                        localDealQueue.push({
+                            type: 'player',
+                            seatIdx: actualSeatIdx
+                        });
+                    }
+                }
+            } else if (round.target === 'community' && document.getElementById('enableCommunity').checked) {
+                // 发公共牌
+                for (let i = 0; i < round.count; i++) {
+                    localDealQueue.push({
+                        type: 'community'
+                    });
+                }
+            }
         });
 
-        if (isHost && currentRoomId) {
-            socket.emit('updateGameState', currentRoomId, {
+        document.getElementById('dealBtn').innerText = '发牌中...';
+        document.getElementById('dealBtn').classList.add('btn-disabled');
+        processDealQueue();
+    }
+
+    function processDealQueue() {
+        if (localCurrentStep >= localDealQueue.length) {
+            // 发牌完成
+            document.getElementById('dealBtn').innerText = '发牌完成';
+            // 同步最终牌局状态
+            socket.emit('syncGameState', currentRoomId, {
                 dealtCards: dealtCards
             });
+            return;
         }
-    }
 
-    // --- 新功能2：拖拽功能 ---
-    let draggedCardId = null;
-
-    function createCardElement(cardId, cardContent, isCommunity, ownerSeatIndex, canFlip, isHostCanFlip, isDraggable) {
-        const card = document.createElement('div');
-        card.id = cardId;
-        card.className = 'card';
-        
-        if (isCommunity) {
-            card.classList.add('flipped');
+        const dealItem = localDealQueue[localCurrentStep];
+        const card = drawCardFromDeck();
+        if (!card) {
+            alert('牌堆已空，发牌终止！');
+            return;
         }
-        
-        if (canFlip) {
-            if (isHostCanFlip) {
-                card.classList.add('host-can-flip');
-            } else {
-                card.classList.add('can-flip');
-            }
+
+        let targetId, isCommunity, ownerSeatIndex;
+        if (dealItem.type === 'player') {
+            targetId = `player-${dealItem.seatIdx}`;
+            isCommunity = false;
+            ownerSeatIndex = dealItem.seatIdx;
         } else {
-            card.classList.add('cannot-flip');
+            targetId = 'communityArea';
+            isCommunity = true;
+            ownerSeatIndex = -1;
         }
 
-        // 拖拽设置（仅房主的公共牌可拖拽）
-        if (isHost && isDraggable) {
-            card.draggable = true;
-            card.ondragstart = (e) => {
-                draggedCardId = cardId;
-                card.classList.add('dragging');
-            };
-            card.ondragend = (e) => {
-                card.classList.remove('dragging');
-                draggedCardId = null;
-            };
-        }
-
-        const back = document.createElement('div');
-        const front = document.createElement('div');
-        back.className = cardTheme === 'tarot' ? 'card-face card-back-tarot' : 'card-face card-back';
-        front.className = cardTheme === 'tarot' ? 'card-face card-front-tarot' : 'card-face card-front';
-        front.innerHTML = cardContent;
+        // 渲染卡牌
+        const cardId = `card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        renderCardWithoutAnimation(targetId, isCommunity, card.html, ownerSeatIndex, false);
         
-        card.appendChild(back);
-        card.appendChild(front);
-
-        if (canFlip) {
-            (function(cid, osi) {
-                card.onclick = function(e) {
-                    // 如果正在拖拽，不触发翻牌
-                    if (card.classList.contains('dragging')) return;
-                    requestFlipCard(cid, osi);
-                };
-            })(cardId, ownerSeatIndex);
-        }
-
-        return card;
-    }
-
-    // 初始化拖拽目标（玩家座位）
-    function initDragTargets() {
-        if (!isHost) return;
-        
-        const playerCards = document.querySelectorAll('.player-cards');
-        playerCards.forEach(el => {
-            el.ondragover = (e) => {
-                e.preventDefault();
-                el.parentElement.classList.add('drag-target');
-            };
-            el.ondragleave = (e) => {
-                el.parentElement.classList.remove('drag-target');
-            };
-            el.ondrop = (e) => {
-                e.preventDefault();
-                el.parentElement.classList.remove('drag-target');
-                
-                if (!draggedCardId || !currentRoomId) return;
-                
-                const seatIndex = parseInt(el.dataset.seat);
-                const moveInfo = {
-                    cardId: draggedCardId,
-                    targetId: el.id,
-                    isCommunity: false,
-                    ownerSeatIndex: seatIndex
-                };
-                
-                socket.emit('moveCard', currentRoomId, moveInfo);
-            };
+        // 记录发牌状态
+        dealtCards.push({
+            cardId: cardId,
+            targetId: targetId,
+            isCommunity: isCommunity,
+            cardContent: card.html,
+            ownerSeatIndex: ownerSeatIndex,
+            isFlipped: false
         });
+
+        // 逐步发牌（加延迟更直观）
+        localCurrentStep++;
+        setTimeout(processDealQueue, 200);
     }
 
+    // 无动画渲染卡牌（用于同步）
     function renderCardWithoutAnimation(targetId, isCommunity, cardContent, ownerSeatIndex, isFlipped) {
         const targetEl = document.getElementById(targetId);
         if (!targetEl) return;
 
-        const isMyCard = ownerSeatIndex === mySeatIndex;
-        let canFlip = false;
-        let isHostCanFlip = false;
-        let isDraggable = false;
-        if (isHost) {
-            canFlip = true;
-            isHostCanFlip = !isMyCard && !isCommunity;
-            isDraggable = isCommunity;
+        const cardId = `card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const isMyCard = (ownerSeatIndex === mySeatIndex);
+        const isHost = window.isHost;
+
+        // 创建卡牌DOM
+        const card = document.createElement('div');
+        card.id = cardId;
+        card.className = `card ${isFlipped ? 'flipped' : ''}`;
+        card.dataset.owner = ownerSeatIndex;
+        
+        // 设置卡牌样式（主题）
+        const cardTheme = document.getElementById('cardTheme').value;
+        const backClass = cardTheme === 'tarot' ? 'card-back-tarot' : 'card-back';
+        const frontClass = cardTheme === 'tarot' ? 'card-front-tarot' : 'card-front';
+
+        // 卡牌内容
+        card.innerHTML = `
+            <div class="card-face ${backClass}"></div>
+            <div class="card-face ${frontClass}">${cardContent}</div>
+        `;
+
+        // 设置翻牌权限样式
+        if (isMyCard) {
+            card.classList.add('can-flip');
+        } else if (isHost) {
+            card.classList.add('host-can-flip');
         } else {
-            canFlip = isCommunity || isMyCard;
+            card.classList.add('cannot-flip');
         }
-        const cardId = `card-sync-${Date.now()}-${Math.random()}`;
-        
-        const card = createCardElement(cardId, cardContent, isCommunity, ownerSeatIndex, canFlip, isHostCanFlip, isDraggable);
-        
-        if (isFlipped) {
-            card.classList.add('flipped');
-        }
-        
+
+        // 绑定翻牌事件
+        card.addEventListener('click', () => {
+            requestFlipCard(cardId, ownerSeatIndex);
+        });
+
+        // 添加到目标容器
         targetEl.appendChild(card);
+
+        // 设置拖拽属性（仅公共牌可拖拽）
+        if (isCommunity && isHost) {
+            card.draggable = true;
+        }
+
+        return cardId;
     }
 
-    function generateLocalDealQueue() {
-        localDealQueue = [];
-        localCurrentStep = 0;
-        const enableCommunity = document.getElementById('enableCommunity').checked;
-        const direction = document.getElementById('direction').value;
-        const rounds = Array.from(document.querySelectorAll('.round-item'));
-        const players = document.querySelectorAll('.player-cards');
-        const community = document.getElementById('communityArea');
-
-        for (let roundIndex = 0; roundIndex < rounds.length; roundIndex++) {
-            const round = rounds[roundIndex];
-            const target = round.querySelector('.round-target').value;
-            const count = parseInt(round.querySelector('.round-count').value);
-
-            for (let c = 0; c < count; c++) {
-                if (target === 'player') {
-                    const order = direction === 'clockwise' ? Array.from(players) : Array.from(players).reverse();
-                    order.forEach((playerEl) => {
-                        const seatIndex = parseInt(playerEl.dataset.seat);
-                        localDealQueue.push({ 
-                            type: 'player', 
-                            target: playerEl,
-                            ownerSeatIndex: seatIndex
-                        });
-                    });
-                } else if (target === 'community' && enableCommunity) {
-                    localDealQueue.push({ 
-                        type: 'community', 
-                        target: community
-                    });
-                }
+    // --- 拖拽功能 ---
+    function initDragAndDrop() {
+        // 拖拽开始
+        document.addEventListener('dragstart', (e) => {
+            if (e.target.classList.contains('card')) {
+                e.target.classList.add('dragging');
+                e.dataTransfer.setData('text/plain', e.target.id);
             }
-        }
+        });
+
+        // 拖拽结束
+        document.addEventListener('dragend', (e) => {
+            if (e.target.classList.contains('card')) {
+                e.target.classList.remove('dragging');
+                document.querySelectorAll('.seat').forEach(seat => {
+                    seat.classList.remove('drag-target');
+                });
+            }
+        });
+
+        // 拖拽经过
+        document.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            const seat = e.target.closest('.seat');
+            if (seat && isHost) {
+                document.querySelectorAll('.seat').forEach(s => s.classList.remove('drag-target'));
+                seat.classList.add('drag-target');
+            }
+        });
+
+        // 拖拽放下
+        document.addEventListener('drop', (e) => {
+            e.preventDefault();
+            if (!isHost) return;
+
+            const cardId = e.dataTransfer.getData('text/plain');
+            const card = document.getElementById(cardId);
+            const seat = e.target.closest('.seat');
+            
+            if (card && seat) {
+                const seatIdx = seat.id.split('-')[1];
+                const targetPlayerEl = document.getElementById(`player-${seatIdx}`);
+                
+                // 移动卡牌
+                targetPlayerEl.appendChild(card);
+                
+                // 同步到后端
+                socket.emit('moveCard', currentRoomId, {
+                    cardId: cardId,
+                    targetId: `player-${seatIdx}`,
+                    isCommunity: false,
+                    ownerSeatIndex: parseInt(seatIdx),
+                    hostSeatIndex: mySeatIndex
+                });
+
+                // 更新本地状态
+                const cardIndex = dealtCards.findIndex(item => item.cardId === cardId);
+                if (cardIndex !== -1) {
+                    dealtCards[cardIndex].targetId = `player-${seatIdx}`;
+                    dealtCards[cardIndex].isCommunity = false;
+                    dealtCards[cardIndex].ownerSeatIndex = parseInt(seatIdx);
+                }
+
+                document.querySelectorAll('.seat').forEach(s => s.classList.remove('drag-target'));
+            }
+        });
     }
 
-    function triggerDeal() {
-        if (!isHost) return;
-        
-        if (localDealQueue.length === 0) {
-            generateLocalDealQueue();
-            document.getElementById('dealBtn').innerText = '下一步发牌';
-            initDragTargets(); // 初始化拖拽目标
+    // 页面关闭时清理资源
+    window.onbeforeunload = async () => {
+        if (agoraClient) {
+            if (localAudioTrack) {
+                localAudioTrack.close();
+            }
+            await agoraClient.leave();
         }
-        
-        stepDeal();
-    }
+        if (currentRoomId && inRoom) {
+            socket.emit('leaveRoom', currentRoomId, { seatIndex: mySeatIndex });
+        }
+    };
 
-    function stepDeal() {
-        if (localCurrentStep >= localDealQueue.length) {
-            document.getElementById('dealBtn').innerText = '发牌完成';
-            console.log('发牌完成！');
-            return;
-        }
-        
-        const step = localDealQueue[localCurrentStep];
-        if (step.type === 'player') {
-            dealCard(step.target, false, step.ownerSeatIndex);
-        } else {
-            dealCard(step.target, true);
-        }
-        localCurrentStep++;
-    }
-
+    // 初始化时解析URL中的房间号
     window.onload = () => {
-        initTable();
         const urlParams = new URLSearchParams(window.location.search);
         const roomId = urlParams.get('room');
         if (roomId) {
             document.getElementById('roomIdInput').value = roomId;
-            setTimeout(() => joinRoom(), 800);
+            setTimeout(() => {
+                joinRoom();
+            }, 500);
         }
     };
 </script>

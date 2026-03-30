@@ -39,13 +39,13 @@
             transition: transform 0.2s;
         }
         .card:hover { transform: translateY(-5px); z-index: 20; }
-        .card.red { color: #d32f2f; }
-        .card.black { color: #212121; }
+        .card.red { color: #d32f2f !important; }
+        .card.black { color: #212121 !important; }
         .card.back {
             background: repeating-linear-gradient(45deg, #b71c1c, #b71c1c 5px, #d32f2f 5px, #d32f2f 10px);
             color: transparent;
         }
-        .card.flipped { background: white; color: inherit; }
+        .card.flipped { background: white !important; color: inherit; }
         .seat {
             width: 100px;
             height: 100px;
@@ -79,7 +79,6 @@
         .host-controls { background: #2a2a4a; padding: 15px; border-radius: 10px; margin-top: 20px; color: white; }
         .host-btn { padding: 8px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; border: none; }
         
-        /* 新增：发牌模块样式 */
         .deal-module {
             display: flex;
             align-items: center;
@@ -90,12 +89,10 @@
             margin-bottom: 8px;
             border: 1px solid #555;
         }
-        .deal-module.dragging { opacity: 0.5; }
         .module-type { padding: 4px 8px; border-radius: 4px; font-weight: bold; }
         .type-player { background: #4CAF50; }
         .type-community { background: #2196F3; }
         
-        /* 新增：公布手牌按钮样式 */
         .reveal-btn {
             position: absolute;
             bottom: -35px;
@@ -115,11 +112,9 @@
         .reveal-btn:hover { background: #ffb300; }
         .reveal-btn.hidden { display: none; }
 
-        /* 语音控制栏UI */
         .voice-controls { background: #2a2a4a; padding: 15px; border-radius: 10px; margin-top: 15px; color: white; }
         .voice-status { font-size: 14px; margin-top: 10px; color: #aaa; }
         
-        /* 网络状态提示 */
         .network-status {
             position: fixed;
             top: 10px;
@@ -135,7 +130,6 @@
     </style>
 </head>
 <body>
-    <!-- 网络状态提示 -->
     <div id="networkStatus" class="network-status status-offline">🔴 服务器连接中...</div>
 
     <div id="loginScreen" class="bg-gray-800 p-8 rounded-xl shadow-2xl w-full max-w-md text-center mx-auto mt-20">
@@ -177,9 +171,7 @@
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <label class="block mb-2 font-bold">发牌顺序 (点击按钮调整顺序):</label>
-                    <div id="dealModulesContainer">
-                        <!-- 发牌模块将在这里动态生成 -->
-                    </div>
+                    <div id="dealModulesContainer"></div>
                     <div class="flex gap-2 mt-3">
                         <button onclick="addDealModule('player')" class="host-btn bg-green-600 hover:bg-green-500 text-white text-sm">+ 玩家发牌</button>
                         <button onclick="addDealModule('community')" class="host-btn bg-blue-600 hover:bg-blue-500 text-white text-sm">+ 公共发牌</button>
@@ -210,13 +202,11 @@
                     🔊 听他人：接收中
                 </button>
             </div>
-            <div id="voiceStatus" class="voice-status">状态：正在准备语音环境...</div>
+            <div id="voiceStatus" class="voice-status">状态：点击房间后自动连接语音</div>
         </div>
     </div>
 
     <script>
-        // --- 核心变量 ---
-        // 注意：请确保后端服务已启动，否则会连接失败
         const SERVER_URL = 'https://poker-backend-1xrx.onrender.com'; 
         let socket = null;
         
@@ -233,9 +223,8 @@
 
         let localDealQueue = [];
         let localCurrentStep = 0;
-        let localFlippedCards = new Set(); // 仅自己可见的翻面牌ID
+        let localFlippedCards = new Set();
 
-        // 新增：发牌模块配置数据
         let dealConfigModules = [
             { id: 1, type: 'player', count: 2 },
             { id: 2, type: 'community', count: 3 },
@@ -243,7 +232,6 @@
             { id: 4, type: 'community', count: 1 }
         ];
 
-        // --- 声网语音变量 ---
         const AGORA_APP_ID = 'b36db247620e4c78a58d146a3c602f93'; 
         let agoraClient = null;
         let localAudioTrack = null;
@@ -267,7 +255,6 @@
             }
         }
 
-        // --- 初始化 Socket 连接 ---
         function initSocket() {
             socket = io(SERVER_URL, {
                 reconnection: true,
@@ -288,12 +275,10 @@
             socket.on('connect_error', (err) => {
                 console.error('❌ 连接失败:', err);
                 updateNetworkStatus(false);
-                alert('无法连接到游戏服务器，请确保后端服务正在运行！');
             });
             
             socket.on('error', (msg) => { alert('❌ 错误: ' + msg); });
 
-            // 房间创建成功
             socket.on('roomCreated', (data) => {
                 currentRoomId = data.roomId;
                 isHost = true;
@@ -301,11 +286,10 @@
                 inRoom = true;
                 document.getElementById('currentRoomId').innerText = currentRoomId;
                 joinVoiceChannel(currentRoomId);
-                renderDealModules(); // 房主显示配置UI
-                updateSeats(1); // 房主先占一个位置
+                renderDealModules();
+                updateSeats(1);
             });
 
-            // 玩家加入
             socket.on('playerJoined', (data) => {
                 document.getElementById('playerCount').innerText = `在线玩家: ${data.count}`;
                 if (data.mySeatIndex !== undefined) {
@@ -318,7 +302,6 @@
                 updateSeats(data.count);
             });
 
-            // 状态同步
             socket.on('syncGameState', (gameState) => {
                 if (!gameState) return;
                 console.log('🔄 收到游戏状态同步');
@@ -331,12 +314,10 @@
                 
                 dealtCards = gameState.dealtCards || [];
                 
-                // 清空DOM
                 document.querySelectorAll('.card-container').forEach(c => c.innerHTML = '');
                 const communityEl = document.getElementById('communityArea');
                 if(communityEl) communityEl.innerHTML = '';
 
-                // 重新渲染所有牌
                 dealtCards.forEach(cardData => {
                     renderCardWithoutAnimation(
                         cardData.targetId, 
@@ -349,15 +330,12 @@
                 });
             });
 
-            // 翻牌事件同步 (公共翻牌)
             socket.on('cardFlipped', (cardInfo) => {
                 const cardElement = document.getElementById(cardInfo.cardId);
                 if (cardElement) {
-                    // 更新数据状态
                     const cardData = dealtCards.find(c => c.cardId === cardInfo.cardId);
                     if(cardData) cardData.isFlipped = true;
                     
-                    // 移除本地私有状态，强制公开
                     localFlippedCards.delete(cardInfo.cardId);
 
                     const innerText = cardElement.getAttribute('data-content');
@@ -375,7 +353,6 @@
             });
         }
 
-        // --- 核心方法 ---
         function createRoom() {
             if(!socket) initSocket();
             
@@ -407,18 +384,13 @@
             document.getElementById('voiceControls').classList.remove('hidden');
         }
 
-        // --- 语音逻辑 ---
         async function joinVoiceChannel(roomId) {
             try {
-                updateVoiceStatus('🔄 正在请求语音鉴权...');
-                // 注意：如果后端挂了，这里会失败，但不影响打牌
-                const tokenRes = await fetch(`${SERVER_URL}/agora-token?channelName=${roomId}`);
+                updateVoiceStatus('🔄 正在初始化语音模块...');
                 
-                if (!tokenRes.ok) throw new Error('Token server down');
-                
-                const tokenData = await tokenRes.json();
-                
-                if (!tokenData.token) throw new Error('未获取到有效 Token');
+                if (typeof AgoraRTC === 'undefined') {
+                    throw new Error('Agora SDK 未加载');
+                }
 
                 agoraClient = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
                 
@@ -426,7 +398,7 @@
                     await agoraClient.subscribe(user, mediaType);
                     if (mediaType === 'audio') {
                         const remoteAudioTrack = user.audioTrack;
-                        if (isSpeakerOn) remoteAudioTrack.play();
+                        if (isSpeakerOn && remoteAudioTrack) remoteAudioTrack.play();
                         updateVoiceStatus(`🟢 已连接玩家 ${user.uid} 的语音`);
                     }
                 });
@@ -435,11 +407,24 @@
                     updateVoiceStatus(`👋 玩家 ${user.uid} 离开语音`);
                 });
 
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 5000);
+                
+                const tokenRes = await fetch(`${SERVER_URL}/agora-token?channelName=${roomId}`, {
+                    signal: controller.signal
+                });
+                clearTimeout(timeoutId);
+                
+                if (!tokenRes.ok) throw new Error('Token server down');
+                
+                const tokenData = await tokenRes.json();
+                if (!tokenData.token) throw new Error('未获取到有效 Token');
+
                 await agoraClient.join(AGORA_APP_ID, roomId, tokenData.token, null);
-                updateVoiceStatus('✅ 频道接入成功，点击上方开启麦克风说话');
+                updateVoiceStatus('✅ 语音频道接入成功，点击上方开启麦克风');
             } catch (error) {
                 console.warn('加入语音频道失败（仅语音不可用）：', error);
-                updateVoiceStatus('❌ 语音服务暂不可用，不影响打牌');
+                updateVoiceStatus(`❌ 语音服务暂不可用: ${error.message}，不影响打牌`);
             }
         }
 
@@ -490,7 +475,6 @@
             }
         }
 
-        // --- 游戏界面初始化 ---
         function initTable() {
             const table = document.getElementById('pokerTable');
             table.querySelectorAll('.seat').forEach(s => s.remove());
@@ -517,7 +501,6 @@
                 cardContainer.className = 'card-container';
                 cardContainer.id = `player-${i}`;
                 
-                // 新增：公布手牌按钮
                 const revealBtn = document.createElement('button');
                 revealBtn.className = 'reveal-btn hidden';
                 revealBtn.innerText = '公布手牌';
@@ -568,12 +551,9 @@
             if(deckEl) deckEl.innerText = deck.length;
         }
 
-        // --- 【重构】模块化发牌系统 ---
-        
-        // 1. 渲染配置模块UI
         function renderDealModules() {
             const container = document.getElementById('dealModulesContainer');
-            if(!container) return; // 非房主不渲染
+            if(!container) return;
             container.innerHTML = '';
 
             dealConfigModules.forEach((module, index) => {
@@ -600,7 +580,6 @@
                 container.appendChild(div);
             });
             
-            // 重置队列
             if(localDealQueue.length === 0) {
                  updateDealButtonLabel();
             }
@@ -621,7 +600,6 @@
         function moveModule(index, direction) {
             const newIndex = index + direction;
             if (newIndex < 0 || newIndex >= dealConfigModules.length) return;
-            // 交换
             [dealConfigModules[index], dealConfigModules[newIndex]] = [dealConfigModules[newIndex], dealConfigModules[index]];
             renderDealModules();
         }
@@ -634,7 +612,6 @@
         function updateDealButtonLabel() {
             const btn = document.getElementById('dealBtn');
             if(!btn) return;
-            // 预览总步数
             let total = 0;
             dealConfigModules.forEach(m => {
                 if(m.type === 'player') total += (m.count * players.length);
@@ -647,17 +624,13 @@
             }
         }
 
-        // 2. 生成发牌队列
         function generateLocalDealQueue() {
             localDealQueue = [];
             localCurrentStep = 0;
 
-            // 遍历模块
             dealConfigModules.forEach(module => {
-                // 对于每个模块，循环次数为张数
                 for (let i = 0; i < module.count; i++) {
                     if (module.type === 'player') {
-                        // 给每个玩家发一张
                         players.forEach(p => {
                             localDealQueue.push({ 
                                 type: 'player', 
@@ -666,7 +639,6 @@
                             });
                         });
                     } else {
-                        // 公共发一张
                         localDealQueue.push({ 
                             type: 'community', 
                             target: 'communityArea' 
@@ -680,7 +652,7 @@
             if (!isHost) return;
             if (localDealQueue.length === 0 || localCurrentStep >= localDealQueue.length) {
                 generateLocalDealQueue();
-                if(localDealQueue.length === 0) return; // 没有配置
+                if(localDealQueue.length === 0) return;
             }
             processDealQueue();
         }
@@ -707,10 +679,8 @@
             let ownerSeatIndex = isCommunity ? -1 : dealItem.ownerSeatIndex;
             let cardId = `card-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
 
-            // 渲染：初始全是背面
             renderCardWithoutAnimation(targetId, isCommunity, card.html, ownerSeatIndex, false, cardId);
             
-            // 记录并同步
             dealtCards.push({ cardId, targetId, isCommunity, cardContent: card.html, ownerSeatIndex, isFlipped: false });
             
             if(socket && socket.connected) {
@@ -723,7 +693,6 @@
             updateDealButtonLabel();
         }
 
-        // --- 【核心修复】渲染逻辑 ---
         function renderCardWithoutAnimation(targetId, isCommunity, cardContent, ownerSeatIndex, isFlipped, overrideCardId = null) {
             const targetEl = document.getElementById(targetId);
             if (!targetEl) {
@@ -735,19 +704,16 @@
             cardElement.className = 'card back';
             cardElement.id = overrideCardId || `card-${Date.now()}`;
             
-            // 【修复1】 强制校验内容，防止undefined
-            const safeContent = cardContent || "🂠"; 
+            const safeContent = cardContent && cardContent.length > 1 ? cardContent : "🂠"; 
             cardElement.setAttribute('data-content', safeContent);
             
             const isMine = ownerSeatIndex === mySeatIndex;
-            
-            // 【修复2】 显示逻辑判断
-            const shouldShowFront = isFlipped || (isMine && localFlippedCards.has(cardElement.id));
+            const shouldShowFront = isFlipped || (isMine && !isCommunity);
 
             if (shouldShowFront) {
                 cardElement.classList.remove('back');
                 cardElement.classList.add('flipped');
-                cardElement.innerHTML = safeContent; // 确保内容被设置
+                cardElement.innerHTML = safeContent;
                 if (safeContent.includes('♥') || safeContent.includes('♦')) {
                     cardElement.classList.add('red');
                 } else {
@@ -755,19 +721,15 @@
                 }
             }
 
-            // 点击事件
             cardElement.onclick = () => {
-                // 1. 房主权限：点击任何牌直接公开
                 if (isHost) {
                     if(socket) socket.emit('flipCard', currentRoomId, { cardId: cardElement.id, isPublic: true });
                     return;
                 }
 
-                // 2. 玩家权限：仅能点击自己的牌
                 if (isMine && !isFlipped) {
                     if (!localFlippedCards.has(cardElement.id)) {
                         localFlippedCards.add(cardElement.id);
-                        // 【修复3】 本地刷新显示，强制从data-content读取
                         cardElement.classList.remove('back');
                         cardElement.classList.add('flipped');
                         const content = cardElement.getAttribute('data-content'); 
@@ -781,10 +743,8 @@
             targetEl.appendChild(cardElement);
         }
 
-        // --- 新增：公布手牌 ---
         function revealMyHand() {
             if (!inRoom) return;
-            // 找出属于自己的所有牌
             const myCards = dealtCards.filter(c => c.ownerSeatIndex === mySeatIndex);
             if(myCards.length === 0) return alert('你还没有手牌');
 
@@ -807,7 +767,6 @@
             if(socket && socket.connected) {
                 socket.emit('updateGameState', currentRoomId, { deck, dealtCards });
             } else {
-                // 离线状态下本地重置
                 document.querySelectorAll('.card-container').forEach(c => c.innerHTML = '');
                 document.getElementById('communityArea').innerHTML = '';
             }
@@ -818,11 +777,8 @@
             navigator.clipboard.writeText(link).then(() => alert('邀请链接已复制！'));
         }
 
-        // 统一在页面加载完后执行
         window.onload = () => {
             initTable();
-            // 延迟初始化socket，避免一进来就弹错误
-            // initSocket(); // 改为点击按钮时初始化
             
             const urlParams = new URLSearchParams(window.location.search);
             const roomId = urlParams.get('room');

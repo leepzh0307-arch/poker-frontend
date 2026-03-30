@@ -627,6 +627,8 @@
         } catch (error) {
             console.error('加入语音频道失败：', error);
             updateVoiceStatus('❌ 加入语音失败，请检查AppID或网络');
+            // 即使失败也显示控件，让用户看到状态
+            document.getElementById('voiceControls').classList.remove('hidden');
         }
     }
 

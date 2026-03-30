@@ -299,11 +299,11 @@
                 <div id="voiceControls" class="voice-controls hidden">
                     <h3>🎤 语音通话</h3>
                     <div class="flex gap-3 flex-wrap">
-                        <button id="micBtn" onclick="toggleMic()" class="host-btn host-btn-secondary">
-                            🎙️ 开启麦克风
+                        <button id="micBtn" onclick="toggleMic()" class="host-btn bg-gray-600 hover:bg-gray-500 text-white transition-colors">
+                            🎙️ 麦克风：已关闭
                         </button>
-                        <button id="speakerBtn" onclick="toggleSpeaker()" class="host-btn host-btn-secondary">
-                            🔊 开启扬声器
+                        <button id="speakerBtn" onclick="toggleSpeaker()" class="host-btn bg-green-600 hover:bg-green-500 text-white transition-colors">
+                            🔊 听他人：接收中
                         </button>
                     </div>
                     <div id="voiceStatus" class="voice-status">
@@ -635,6 +635,7 @@
     // 切换麦克风
     async function toggleMic() {
         if (!agoraClient) return;
+        const micBtn = document.getElementById('micBtn');
 
         if (!isMicOn) {
             try {
@@ -643,9 +644,11 @@
                 // 发布到频道
                 await agoraClient.publish(localAudioTrack);
                 isMicOn = true;
-                document.getElementById('micBtn').innerText = '🔴 关闭麦克风';
-                document.getElementById('micBtn').classList.remove('host-btn-secondary');
-                document.getElementById('micBtn').classList.add('host-btn-primary');
+
+                // 开启时：按钮变红，提示正在发言
+                micBtn.innerText = '🔴 麦克风：收音中';
+                micBtn.classList.remove('bg-gray-600', 'hover:bg-gray-500');
+                micBtn.classList.add('bg-red-600', 'hover:bg-red-500');
                 updateVoiceStatus('✅ 麦克风已开启');
             } catch (error) {
                 console.error('开启麦克风失败：', error);
@@ -659,16 +662,19 @@
                 localAudioTrack = null;
             }
             isMicOn = false;
-            document.getElementById('micBtn').innerText = '🎙️ 开启麦克风';
-            document.getElementById('micBtn').classList.remove('host-btn-primary');
-            document.getElementById('micBtn').classList.add('host-btn-secondary');
+
+           // 关闭时：按钮恢复灰色
+            micBtn.innerText = '🎙️ 麦克风：已关闭';
+            micBtn.classList.remove('bg-red-600', 'hover:bg-red-500');
+            micBtn.classList.add('bg-gray-600', 'hover:bg-gray-500');
             updateVoiceStatus('麦克风已关闭');
         }
     }
 
-    // 切换扬声器
+    // 切换扬声器(是否屏蔽他人)
     function toggleSpeaker() {
         if (!agoraClient) return;
+        const speakerBtn = document.getElementById('speakerBtn');
 
         isSpeakerOn = !isSpeakerOn;
         // 控制所有远端音频的播放状态
@@ -682,15 +688,15 @@
         });
 
         if (isSpeakerOn) {
-            document.getElementById('speakerBtn').innerText = '🔊 开启扬声器';
-            document.getElementById('speakerBtn').classList.remove('host-btn-primary');
-            document.getElementById('speakerBtn').classList.add('host-btn-secondary');
-            updateVoiceStatus('扬声器已开启');
+            speakerBtn.innerText = '🔊 听他人：接收中';
+            speakerBtn.classList.remove('bg-gray-600', 'hover:bg-gray-500');
+            speakerBtn.classList.add('bg-green-600', 'hover:bg-green-500');
+            updateVoiceStatus('已恢复接收其他玩家声音');
         } else {
-            document.getElementById('speakerBtn').innerText = '🔇 关闭扬声器';
-            document.getElementById('speakerBtn').classList.remove('host-btn-secondary');
-            document.getElementById('speakerBtn').classList.add('host-btn-primary');
-            updateVoiceStatus('扬声器已关闭');
+            speakerBtn.innerText = '🔇 听他人：已屏蔽';
+            speakerBtn.classList.remove('bg-green-600', 'hover:bg-green-500');
+            speakerBtn.classList.add('bg-gray-600', 'hover:bg-gray-500');
+            updateVoiceStatus('已屏蔽其他玩家声音');
         }
     }
 
@@ -966,15 +972,11 @@
         document.getElementById('dealBtn').classList.add('btn-disabled');
         processDealQueue();
     }
-
+// 修复后的发牌队列处理 (解决无法同步的问题)
     function processDealQueue() {
         if (localCurrentStep >= localDealQueue.length) {
-            // 发牌完成
+            // 发牌全部完成
             document.getElementById('dealBtn').innerText = '发牌完成';
-            // 同步最终牌局状态
-            socket.emit('syncGameState', currentRoomId, {
-                dealtCards: dealtCards
-            });
             return;
         }
 
@@ -1010,11 +1012,16 @@
             isFlipped: false
         });
 
+        // 【关键修复】将原先的 syncGameState 改为 updateGameState
+        // 并且放到每次发牌的逻辑里，让其他人能看到实时的发牌过程！
+        socket.emit('updateGameState', currentRoomId, {
+            dealtCards: dealtCards
+        });
+
         // 逐步发牌（加延迟更直观）
         localCurrentStep++;
         setTimeout(processDealQueue, 200);
     }
-
     // 无动画渲染卡牌（用于同步）
     function renderCardWithoutAnimation(targetId, isCommunity, cardContent, ownerSeatIndex, isFlipped) {
         const targetEl = document.getElementById(targetId);

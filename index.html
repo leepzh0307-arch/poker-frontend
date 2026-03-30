@@ -6,7 +6,6 @@
     <title>联机扑克发牌模拟器</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-    <!-- 新增：引入声网SDK -->
     <script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.21.0.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -24,1147 +23,540 @@
         .card {
             width: 65px;
             height: 95px;
+            background: white;
             border-radius: 6px;
+            border: 1px solid #ccc;
+            display: inline-flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+            font-weight: bold;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
+            margin: -20px -15px 0 0;
             position: relative;
             cursor: pointer;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-            transition: transform 0.2s ease;
+            user-select: none;
         }
-        /* 拖拽样式 */
-        .card.dragging {
-            opacity: 0.7;
-            transform: scale(1.1);
-            z-index: 9999;
-            cursor: grabbing;
+        .card.red { color: #d32f2f; }
+        .card.black { color: #212121; }
+        .card.back {
+            background: repeating-linear-gradient(45deg, #b71c1c, #b71c1c 5px, #d32f2f 5px, #d32f2f 10px);
+            color: transparent;
         }
-        .card.drag-over {
-            box-shadow: 0 0 15px #fbbf24;
-            transform: scale(1.05);
-        }
-        /* 房主专属：其他玩家手牌悬停高亮 */
-        .card.host-can-flip:hover {
-            box-shadow: 0 0 12px #ef4444;
-        }
-        .card.can-flip:hover {
-            box-shadow: 0 0 12px #fbbf24;
-        }
-        .card.cannot-flip {
-            cursor: not-allowed;
-            opacity: 0.9;
-        }
-        .card.cannot-flip:hover {
-            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-        }
-        .card-face {
-            position: absolute;
-            width: 100%;
-            height: 100%;
-            border-radius: 6px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 22px;
-            font-weight: bold;
-        }
-        .card-back {
-            background: linear-gradient(135deg, #1e3a8a, #3b0764);
-            color: white;
-            z-index: 2;
-        }
-        .card-back-tarot {
-            background: linear-gradient(135deg, #4a044a, #1e1b4b);
-            border: 2px solid #fbbf24;
-            color: #f9d59b;
-            z-index: 2;
-        }
-        .card-back::after { content: "♠♥♦♣"; font-size: 18px; }
-        .card-back-tarot::after { content: "✴"; font-size: 28px; }
-        .card-front {
-            background: white;
-            color: #000;
-            z-index: 1;
-        }
-        .card-front-tarot {
-            background: #2d1b69;
-            color: #f9d59b;
-            border: 2px solid #d4af37;
-            z-index: 1;
-        }
-        /* 翻牌核心样式 */
-        .card.flipped .card-back {
-            display: none;
-        }
-        .card.flipped .card-front {
-            z-index: 3;
-            display: flex;
-        }
-        .deck { position: absolute; z-index: 5; }
-        .deck-card {
-            width: 65px;
-            height: 95px;
-            position: absolute;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.5);
-            background: linear-gradient(135deg, #1e3a8a, #3b0764);
-            border-radius: 6px;
-        }
+        .card.flipped { background: white; color: inherit; }
         .seat {
+            width: 100px;
+            height: 100px;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 50%;
             position: absolute;
-            width: 160px;
-            height: 140px;
             display: flex;
             flex-direction: column;
+            justify-content: flex-end;
             align-items: center;
-            justify-content: center;
-            transform: translate(-50%, -50%);
-        }
-        .seat.drag-target {
-            background: rgba(251, 191, 36, 0.2);
-            border-radius: 10px;
-        }
-        .seat-label {
+            border: 2px solid #555;
+            padding-bottom: 10px;
             color: white;
-            font-weight: bold;
-            margin-bottom: 8px;
-            text-shadow: 0 2px 4px #000;
-            font-size: 13px;
-            padding: 2px 8px;
-            border-radius: 4px;
-        }
-        .seat-label.mine {
-            background: #fbbf24;
-            color: #000;
-            font-size: 14px;
-        }
-        .player-cards {
-            display: flex;
-            gap: 6px;
-            justify-content: center;
-            width: 100%;
-            height: 95px;
-            position: relative;
-        }
-        #communityArea {
-            gap: 8px !important;
-            transform: translate(-50%, -50%) !important;
-            display: flex;
-            top: 50%;
-            left: 50%;
-            position: absolute;
-        }
-        .btn-disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
-        /* 房主专属提示样式 */
-        .host-tip {
-            background: #ef4444;
-            color: white;
-            padding: 4px 8px;
-            border-radius: 4px;
             font-size: 12px;
-            margin-top: 4px;
-            text-align: center;
+            transition: all 0.3s;
         }
-        /* 投票弹窗样式 */
-        .vote-modal {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.8);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 10000;
+        .seat.occupied { border-color: #4CAF50; background: rgba(76, 175, 80, 0.2); }
+        .seat.my-seat { border-color: #FFC107; background: rgba(255, 193, 7, 0.2); box-shadow: 0 0 15px #FFC107; }
+        .card-container { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); display: flex; flex-wrap: wrap; justify-content: center; z-index: 10; width: 150px;}
+        .community-cards {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            display: flex; gap: 5px;
+            width: 350px; height: 100px;
+            justify-content: center; align-items: center;
+            background: rgba(0,0,0,0.2); border-radius: 10px; padding: 10px;
+            z-index: 5;
         }
-        .vote-modal-content {
-            background: #1f2937;
-            padding: 30px;
-            border-radius: 12px;
-            text-align: center;
-            color: white;
-            max-width: 400px;
-        }
-        .vote-modal-content h3 {
-            font-size: 20px;
-            margin-bottom: 20px;
-        }
-        .vote-buttons {
-            display: flex;
-            gap: 20px;
-            justify-content: center;
-        }
-        .vote-btn {
-            padding: 10px 30px;
-            border-radius: 8px;
-            font-size: 16px;
-            font-weight: bold;
-            cursor: pointer;
-            border: none;
-        }
-        .vote-btn-yes {
-            background: #10b981;
-            color: white;
-        }
-        .vote-btn-yes:hover {
-            background: #059669;
-        }
-        .vote-btn-no {
-            background: #ef4444;
-            color: white;
-        }
-        .vote-btn-no:hover {
-            background: #dc2626;
-        }
-        /* 房主按钮区域 */
-        .host-controls {
-            display: flex;
-            gap: 10px;
-            margin-top: 15px;
-            flex-wrap: wrap;
-        }
-        .host-btn {
-            padding: 8px 16px;
-            border-radius: 6px;
-            font-size: 14px;
-            font-weight: bold;
-            cursor: pointer;
-            border: none;
-        }
-        .host-btn-primary {
-            background: #f59e0b;
-            color: #000;
-        }
-        .host-btn-primary:hover {
-            background: #d97706;
-        }
-        .host-btn-secondary {
-            background: #6366f1;
-            color: white;
-        }
-        .host-btn-secondary:hover {
-            background: #4f46e5;
-        }
-        /* 新增：语音控制UI样式 */
-        .voice-controls {
-            margin-top: 15px;
-            padding: 15px;
-            background: #374151;
-            border-radius: 10px;
-        }
-        .voice-controls h3 {
-            font-size: 16px;
-            font-weight: bold;
-            margin-bottom: 10px;
-            color: #fbbf24;
-        }
-        .voice-status {
-            font-size: 13px;
-            color: #d1d5db;
-            margin-top: 8px;
-        }
+        .dealer-area { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); text-align: center; color: white; }
+        .drag-target { border: 2px dashed #FFEB3B; background: rgba(255, 235, 59, 0.2); }
+        .host-controls { background: #2a2a4a; padding: 15px; border-radius: 10px; margin-top: 20px; color: white; }
+        .host-btn { padding: 8px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; border: none; }
+        
+        /* 语音控制栏UI */
+        .voice-controls { background: #2a2a4a; padding: 15px; border-radius: 10px; margin-top: 15px; color: white; }
+        .voice-status { font-size: 14px; margin-top: 10px; color: #aaa; }
     </style>
 </head>
 <body>
-    <div class="w-full max-w-4xl mx-auto flex flex-col gap-8">
-        
-        <div class="bg-gray-900 rounded-2xl p-6 shadow-2xl text-white w-full">
-            <h2 class="text-2xl font-bold text-yellow-400 mb-6 text-center">🎴 联机扑克发牌模拟器</h2>
-            
-            <div class="mb-6 p-4 bg-gray-800 rounded-xl">
-                <h3 class="text-lg font-semibold mb-3 text-yellow-400">🔗 联机房间</h3>
-                <div id="roomStatus" class="mb-3 text-sm">未连接房间</div>
-                <!-- 房主专属权利提示 -->
-                <div id="hostTip" class="host-tip hidden">
-                    👑 房主专属：点击任意玩家手牌强制公布 | 拖动公共牌到玩家区 | 一键发起开牌投票
-                </div>
-                <div class="flex gap-2">
-                    <button id="createRoomBtn" onclick="createRoom()" class="flex-1 bg-blue-600 hover:bg-blue-700 py-2 rounded">创建房间</button>
-                    <input id="roomIdInput" placeholder="输入房间号" class="flex-1 bg-gray-700 rounded p-2 text-center">
-                    <button id="joinRoomBtn" onclick="joinRoom()" class="flex-1 bg-green-600 hover:bg-green-700 py-2 rounded">加入</button>
-                </div>
-                <div id="roomLink" class="mt-3 hidden">
-                    <p class="text-sm mb-1">分享链接给朋友：</p>
-                    <input id="linkInput" readonly class="w-full bg-gray-700 rounded p-2 text-sm">
-                </div>
-                <!-- 房主专属控制按钮 -->
-                <div id="hostControls" class="host-controls hidden">
-                    <button id="voteBtn" onclick="startVote()" class="host-btn host-btn-primary">
-                        📊 发起一键开牌投票
-                    </button>
-                    <div class="text-sm text-gray-400 w-full mt-2">
-                        💡 提示：公共牌可拖动到任意玩家手牌区
-                    </div>
-                </div>
-
-                <!-- 新增：语音控制UI -->
-                <div id="voiceControls" class="voice-controls hidden">
-                    <h3>🎤 语音通话</h3>
-                    <div class="flex gap-3 flex-wrap">
-                        <button id="micBtn" onclick="toggleMic()" class="host-btn bg-gray-600 hover:bg-gray-500 text-white transition-colors">
-                            🎙️ 麦克风：已关闭
-                        </button>
-                        <button id="speakerBtn" onclick="toggleSpeaker()" class="host-btn bg-green-600 hover:bg-green-500 text-white transition-colors">
-                            🔊 听他人：接收中
-                        </button>
-                    </div>
-                    <div id="voiceStatus" class="voice-status">
-                        状态：未加入语音频道
-                    </div>
-                </div>
-            </div>
-
-            <!-- 仅房主可见设置区 -->
-            <div id="hostSettings" class="hidden">
-                <div class="mb-6">
-                    <h3 class="text-lg font-semibold mb-3">基础设置（仅房主可调）</h3>
-                    <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <label class="block mb-2">玩家数量</label>
-                            <input id="playerCount" type="number" min="1" max="10" value="3" class="w-full bg-gray-800 border border-gray-700 rounded p-2">
-                        </div>
-                        <div>
-                            <label class="block mb-2">发牌方向</label>
-                            <select id="direction" class="w-full bg-gray-800 border border-gray-700 rounded p-2">
-                                <option value="clockwise">顺时针</option>
-                                <option value="counter">逆时针</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="mt-4">
-                        <label class="flex items-center gap-2">
-                            <input id="enableCommunity" type="checkbox" checked>
-                            <span>启用公共牌区（德州扑克）</span>
-                        </label>
-                    </div>
-                </div>
-
-                <div class="mb-6">
-                    <h3 class="text-lg font-semibold mb-3">发牌轮次</h3>
-                    <div id="roundContainer" class="space-y-3">
-                        <div class="round-item bg-gray-800 p-3 rounded flex gap-2 items-center">
-                            <select class="round-target bg-gray-700 rounded p-1 flex-1">
-                                <option value="player">发给玩家</option>
-                                <option value="community">发给公共牌区</option>
-                            </select>
-                            <input type="number" min="1" value="2" class="round-count w-16 bg-gray-700 rounded p-1">
-                        </div>
-                    </div>
-                    <button onclick="addRound()" class="mt-2 bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded text-sm">+ 添加轮次</button>
-                </div>
-
-                <div class="mb-6">
-                    <h3 class="text-lg font-semibold mb-3">扑克主题</h3>
-                    <select id="cardTheme" class="w-full bg-gray-800 border border-gray-700 rounded p-2">
-                        <option value="standard">标准扑克</option>
-                        <option value="tarot">塔罗牌风格</option>
-                    </select>
-                </div>
-
-                <div class="mb-6 flex gap-2 flex-wrap">
-                    <button onclick="loadPreset('zhajinhua')" class="bg-purple-600 hover:bg-purple-700 px-3 py-2 rounded flex-1">炸金花预设</button>
-                    <button onclick="loadPreset('texas')" class="bg-red-600 hover:bg-red-700 px-3 py-2 rounded flex-1">德州扑克预设</button>
-                </div>
-
-                <button onclick="initTableAndSync()" class="w-full bg-green-600 hover:bg-green-700 py-3 rounded font-bold">初始化并同步牌桌</button>
-            </div>
-        </div>
-
-        <div class="w-full flex flex-col gap-6">
-            <div class="w-full flex justify-center">
-                <button id="dealBtn" onclick="triggerDeal()" 
-                    class="px-10 py-4 bg-yellow-600 hover:bg-yellow-700 rounded-xl font-bold text-lg shadow-lg hidden">
-                    开始发牌
+    <div id="loginScreen" class="bg-gray-800 p-8 rounded-xl shadow-2xl w-full max-w-md text-center mx-auto mt-20">
+        <h1 class="text-3xl font-bold text-white mb-6">♠️ 德州扑克联机发牌 ♥️</h1>
+        <input type="text" id="playerName" placeholder="输入你的昵称" class="w-full p-3 mb-4 rounded bg-gray-700 text-white border border-gray-600 focus:outline-none">
+        <div class="space-y-4">
+            <button onclick="createRoom()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-4 rounded shadow">
+                创建房间
+            </button>
+            <div class="flex gap-2">
+                <input type="text" id="roomIdInput" placeholder="输入房间号" class="flex-1 p-3 rounded bg-gray-700 text-white border border-gray-600 focus:outline-none">
+                <button onclick="joinRoom()" class="bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-6 rounded shadow">
+                    加入
                 </button>
             </div>
-
-            <div class="poker-table relative" id="table">
-                <div id="deck" class="deck top-1/2 left-1/2 translate-x-[-50%] translate-y-[-50%]"></div>
-                <div id="communityArea" class="absolute top-1/2 left-1/2 flex gap-3 min-h-[100px]"></div>
-                <div id="seats"></div>
-            </div>
-
-            <p class="text-white text-center text-sm">✨ 只有自己的手牌可以点击查看 | 房主可强制公布任意玩家手牌</p>
         </div>
     </div>
 
-    <!-- 投票弹窗 -->
-    <div id="voteModal" class="vote-modal hidden">
-        <div class="vote-modal-content">
-            <h3 id="voteTitle">房主发起了一键开牌投票</h3>
-            <p id="voteDesc" class="mb-4 text-gray-300">是否同意公布所有玩家的手牌？</p>
-            <div id="voteButtons" class="vote-buttons">
-                <button class="vote-btn vote-btn-yes" onclick="submitVote(true)">同意</button>
-                <button class="vote-btn vote-btn-no" onclick="submitVote(false)">拒绝</button>
+    <div id="gameScreen" class="hidden max-w-6xl mx-auto">
+        <div id="roomInfo" class="hidden mb-4 p-4 bg-gray-800 rounded-lg flex justify-between items-center text-white">
+            <div>
+                <span class="text-xl font-bold">房间号: <span id="currentRoomId" class="text-blue-400 select-all">---</span></span>
+                <span class="ml-4 text-gray-400" id="playerCount">在线玩家: 1</span>
             </div>
-            <div id="voteResult" class="mt-4 hidden">
-                <p class="text-lg font-bold"></p>
+            <button onclick="copyRoomLink()" class="bg-gray-600 hover:bg-gray-500 px-4 py-2 rounded">复制邀请链接</button>
+        </div>
+
+        <div class="poker-table" id="pokerTable">
+            <div class="dealer-area">
+                <div class="text-2xl mb-2">牌堆 (<span id="deckCount">52</span>)</div>
+                <div class="card back mx-auto"></div>
+            </div>
+            <div class="community-cards" id="communityArea"></div>
+        </div>
+
+        <div id="hostControls" class="host-controls hidden">
+            <h3 class="text-xl mb-3 border-b border-gray-600 pb-2">👑 房主发牌控制台</h3>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="space-y-3">
+                    <div class="flex items-center gap-2">
+                        <input type="checkbox" id="enablePlayerDeal" checked>
+                        <label>每位玩家发 <input type="number" id="playerDealCount" value="2" class="w-12 text-black px-1"> 张</label>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <input type="checkbox" id="enableCommunityDeal" checked>
+                        <label>公共区域发 <input type="number" id="communityDealCount" value="5" class="w-12 text-black px-1"> 张</label>
+                    </div>
+                </div>
+                
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-sm mb-1">发牌顺序配置 (逗号分隔):</label>
+                        <input type="text" id="dealSequence" value="player,community" class="w-full text-black px-2 py-1 rounded">
+                    </div>
+                    <div class="flex gap-2 pt-2">
+                        <button id="dealBtn" onclick="triggerDeal()" class="host-btn bg-blue-600 hover:bg-blue-500 text-white shadow w-full">
+                            开始发牌
+                        </button>
+                        <button onclick="resetGame()" class="host-btn bg-red-600 hover:bg-red-500 text-white shadow w-full">
+                            重新洗牌
+                        </button>
+                        <button onclick="startVote()" class="host-btn bg-purple-600 hover:bg-purple-500 text-white shadow w-full">
+                            发起亮牌投票
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="voiceControls" class="voice-controls hidden">
+            <h3 class="text-xl mb-3 border-b border-gray-600 pb-2">🎤 实时语音通话</h3>
+            <div class="flex gap-3 flex-wrap">
+                <button id="micBtn" onclick="toggleMic()" class="host-btn bg-gray-600 hover:bg-gray-500 text-white transition-colors">
+                    🎙️ 麦克风：已关闭
+                </button>
+                <button id="speakerBtn" onclick="toggleSpeaker()" class="host-btn bg-green-600 hover:bg-green-500 text-white transition-colors">
+                    🔊 听他人：接收中
+                </button>
+            </div>
+            <div id="voiceStatus" class="voice-status">状态：正在准备语音环境...</div>
+        </div>
+
+        <div id="voteDialog" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+            <div class="bg-gray-800 p-6 rounded-xl text-center text-white w-96">
+                <h2 class="text-2xl mb-4 text-yellow-400">🚨 房主发起了亮牌投票 🚨</h2>
+                <p class="mb-6">是否同意公开你的手牌给所有人看？</p>
+                <div class="flex justify-center gap-4">
+                    <button onclick="submitVote(true)" class="bg-green-600 hover:bg-green-500 px-6 py-2 rounded font-bold">同意 (亮牌)</button>
+                    <button onclick="submitVote(false)" class="bg-red-600 hover:bg-red-500 px-6 py-2 rounded font-bold">拒绝 (保密)</button>
+                </div>
             </div>
         </div>
     </div>
 
-<script>
-    // 联机核心
-    const socket = io('https://poker-backend-1xrx.onrender.com'); // 保持你原有的后端地址
-    let currentRoomId = null;
-    let isHost = false;
-    let inRoom = false;
-    let mySeatIndex = -1;
-    let hasVoted = false;
+    <script>
+        // --- 核心变量 ---
+        const socket = io('https://poker-backend-1xrx.onrender.com'); 
+        
+        let currentRoomId = null;
+        let isHost = false;
+        let mySeatIndex = -1;
+        let players = [];
+        let inRoom = false;
+        
+        const suits = ['♠', '♥', '♣', '♦'];
+        const values = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+        let deck = [];
+        let dealtCards = []; 
 
-    // 新增：声网语音全局变量
-    let agoraClient = null;
-    let localAudioTrack = null;
-    let isMicOn = false;
-    let isSpeakerOn = true;
-    const AGORA_APP_ID = 'b36db247620e4c78a58d146a3c602f93'; // 请替换为自己的声网AppID
+        let localDealQueue = [];
+        let localCurrentStep = 0;
 
-    // 全局游戏变量
-    let realDeck = [];
-    let remainingCards = 52;
-    let cardTheme = 'standard';
-    let localDealQueue = [];
-    let localCurrentStep = 0;
-    let dealtCards = [];
-    const suits = ['♠', '♥', '♦', '♣'];
-    const ranks = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+        // --- 声网语音变量 ---
+        const AGORA_APP_ID = 'b36db247620e4c78a58d146a3c602f93'; 
+        let agoraClient = null;
+        let localAudioTrack = null;
+        let isMicOn = false;
+        let isSpeakerOn = true;
 
-    // --- 联机功能 ---
-    function createRoom() {
-        if (inRoom) return;
-        socket.emit('createRoom');
-    }
+        function updateVoiceStatus(text) {
+            document.getElementById('voiceStatus').innerText = `状态：${text}`;
+        }
 
-    function joinRoom() {
-        if (inRoom) return;
-        const roomId = document.getElementById('roomIdInput').value.toUpperCase();
-        if (!roomId) return alert('请输入房间号！');
-        currentRoomId = roomId;
-        socket.emit('joinRoom', roomId);
-    }
+        // --- 网络通信事件 ---
+        socket.on('connect', () => { console.log('✅ 已连接到服务器'); });
+        socket.on('error', (msg) => { alert('❌ 错误: ' + msg); });
 
-    function disableRoomButtons() {
-        inRoom = true;
-        document.getElementById('createRoomBtn').classList.add('btn-disabled');
-        document.getElementById('joinRoomBtn').classList.add('btn-disabled');
-        document.getElementById('roomIdInput').classList.add('btn-disabled');
-        document.getElementById('roomIdInput').disabled = true;
-    }
-
-    socket.on('roomCreated', (data) => {
-        currentRoomId = data.roomId;
-        isHost = true;
-        mySeatIndex = 0;
-        disableRoomButtons();
-        document.getElementById('hostTip').classList.remove('hidden');
-        document.getElementById('hostControls').classList.remove('hidden');
-        document.getElementById('roomStatus').innerText = `✅ 已创建房间：${data.roomId}（你是房主，座位：玩家1）`;
-        document.getElementById('roomLink').classList.remove('hidden');
-        const link = `${window.location.href}?room=${data.roomId}`;
-        document.getElementById('linkInput').value = link;
-        document.getElementById('hostSettings').classList.remove('hidden');
-        document.getElementById('dealBtn').style.display = 'block';
-        initTable();
-        // 新增：房主创建房间后自动加入语音
-        joinVoiceChannel(currentRoomId);
-        console.log('房主初始化完成，房间ID：', currentRoomId, '我的座位：', mySeatIndex);
-    });
-
-    socket.on('playerJoined', (data) => {
-        disableRoomButtons();
-        if (!isHost) {
-            mySeatIndex = data.mySeatIndex;
-            document.getElementById('roomStatus').innerText = `✅ 已加入房间！你的座位：玩家${mySeatIndex + 1}`;
-            document.getElementById('dealBtn').style.display = 'none';
-            // 新增：加入者加入房间后自动加入语音
+        // 房间创建成功
+        socket.on('roomCreated', (data) => {
+            currentRoomId = data.roomId;
+            isHost = true;
+            mySeatIndex = 0;
+            inRoom = true;
+            document.getElementById('currentRoomId').innerText = currentRoomId;
             joinVoiceChannel(currentRoomId);
-            console.log('加入者初始化完成，房间ID：', currentRoomId, '我的座位：', mySeatIndex);
-        } else {
-            document.getElementById('roomStatus').innerText = `✅ 房间内人数：${data.count}`;
-        }
-    });
+        });
 
-    socket.on('syncConfig', (config) => {
-        if (!isHost) {
-            document.getElementById('playerCount').value = config.playerCount;
-            document.getElementById('direction').value = config.direction;
-            document.getElementById('enableCommunity').checked = config.enableCommunity;
-            document.getElementById('cardTheme').value = config.cardTheme;
-            const container = document.getElementById('roundContainer');
-            container.innerHTML = '';
-            config.rounds.forEach(r => {
-                const item = document.createElement('div');
-                item.className = 'round-item bg-gray-800 p-3 rounded flex gap-2 items-center';
-                item.innerHTML = `
-                    <select class="round-target bg-gray-700 rounded p-1 flex-1" disabled>
-                        <option value="player" ${r.target==='player'?'selected':''}>发给玩家</option>
-                        <option value="community" ${r.target==='community'?'selected':''}>发给公共牌区</option>
-                    </select>
-                    <input type="number" value="${r.count}" class="round-count w-16 bg-gray-700 rounded p-1" disabled>
-                `;
-                container.appendChild(item);
-            });
-            initTable();
-        }
-    });
+        // 玩家加入
+        socket.on('playerJoined', (data) => {
+            document.getElementById('playerCount').innerText = `在线玩家: ${data.count}`;
+            if (data.mySeatIndex !== undefined) {
+                mySeatIndex = data.mySeatIndex;
+                inRoom = true;
+                currentRoomId = document.getElementById('roomIdInput').value;
+                document.getElementById('currentRoomId').innerText = currentRoomId;
+                joinVoiceChannel(currentRoomId);
+            }
+            updateSeats(data.count);
+        });
 
-    socket.on('syncGameState', (state) => {
-        if (!state || isHost) return;
-        console.log('非房主收到牌局同步，当前我的座位：', mySeatIndex);
-        if (dealtCards.length < (state.dealtCards || []).length) {
-            const newCards = (state.dealtCards || []).slice(dealtCards.length);
-            newCards.forEach((dealt) => {
-                renderCardWithoutAnimation(dealt.targetId, dealt.isCommunity, dealt.cardContent, dealt.ownerSeatIndex, dealt.isFlipped);
-            });
-            dealtCards = state.dealtCards || [];
-        }
-    });
-
-    // 统一翻牌同步入口
-    socket.on('cardFlipped', (cardInfo) => {
-        const card = document.getElementById(cardInfo.cardId);
-        if (!card) return;
-        if (card.classList.contains('flipped')) {
-            card.classList.remove('flipped');
-        } else {
-            card.classList.add('flipped');
-        }
-        const cardIndex = dealtCards.findIndex(item => item.cardId === cardInfo.cardId);
-        if (cardIndex !== -1) {
-            dealtCards[cardIndex].isFlipped = !dealtCards[cardIndex].isFlipped;
-        }
-        console.log('翻牌同步完成，卡牌ID：', cardInfo.cardId, '当前状态：', card.classList.contains('flipped'));
-    });
-
-    // --- 新功能1：投票系统 ---
-    socket.on('voteStarted', () => {
-        hasVoted = false;
-        document.getElementById('voteModal').classList.remove('hidden');
-        document.getElementById('voteTitle').innerText = '房主发起了一键开牌投票';
-        document.getElementById('voteDesc').innerText = '是否同意公布所有玩家的手牌？';
-        document.getElementById('voteButtons').classList.remove('hidden');
-        document.getElementById('voteResult').classList.add('hidden');
-    });
-
-    socket.on('voteResult', (result) => {
-        document.getElementById('voteButtons').classList.add('hidden');
-        document.getElementById('voteResult').classList.remove('hidden');
-        document.getElementById('voteResult').querySelector('p').innerText = 
-            result.approved ? '✅ 投票通过！所有玩家手牌已公布' : '❌ 投票未通过，手牌不公布';
-        
-        // 投票通过则自动翻牌
-        if (result.approved) {
-            flipAllCards();
-        }
-        
-        // 3秒后关闭弹窗
-        setTimeout(() => {
-            document.getElementById('voteModal').classList.add('hidden');
-        }, 3000);
-    });
-
-    // --- 新功能2：拖拽同步 ---
-    socket.on('cardMoved', (moveInfo) => {
-        const card = document.getElementById(moveInfo.cardId);
-        const targetEl = document.getElementById(moveInfo.targetId);
-        if (!card || !targetEl) return;
-        
-        // 移动卡牌DOM
-        targetEl.appendChild(card);
-        
-        // 更新本地牌局状态
-        const cardIndex = dealtCards.findIndex(item => item.cardId === moveInfo.cardId);
-        if (cardIndex !== -1) {
-            dealtCards[cardIndex].targetId = moveInfo.targetId;
-            dealtCards[cardIndex].isCommunity = moveInfo.isCommunity;
-            dealtCards[cardIndex].ownerSeatIndex = moveInfo.ownerSeatIndex;
-        }
-        
-        console.log('卡牌移动同步完成：', moveInfo.cardId, '->', moveInfo.targetId);
-    });
-
-    socket.on('error', (msg) => {
-        alert(msg);
-    });
-
-    // --- 新增：声网语音核心功能 ---
-    async function joinVoiceChannel(roomId) {
-        if (!AGORA_APP_ID || AGORA_APP_ID.includes('替换')) {
-            console.error('请先替换成你的声网AppID！');
-            updateVoiceStatus('❌ 请先在代码里替换声网AppID');
-            return;
-        }
-
-        try {
-            // 1. 初始化声网客户端
-            agoraClient = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
+        // 状态同步
+        socket.on('syncGameState', (gameState) => {
+            if (!gameState) return;
+            if (!isHost) {
+                deck = gameState.deck;
+                document.getElementById('deckCount').innerText = deck.length;
+            }
             
-            // 2. 监听远端用户加入
-            agoraClient.on('user-published', async (user, mediaType) => {
-                await agoraClient.subscribe(user, mediaType);
-                if (mediaType === 'audio') {
-                    const remoteAudioTrack = user.audioTrack;
-                    if (isSpeakerOn) {
-                        remoteAudioTrack.play();
-                    }
-                    updateVoiceStatus(`已连接玩家${user.uid}的语音`);
+            dealtCards = gameState.dealtCards || [];
+            document.querySelectorAll('.card-container').forEach(c => c.innerHTML = '');
+            document.getElementById('communityArea').innerHTML = '';
+
+            dealtCards.forEach(cardData => {
+                renderCardWithoutAnimation(cardData.targetId, cardData.isCommunity, cardData.cardContent, cardData.ownerSeatIndex, cardData.isFlipped);
+            });
+        });
+
+        // 翻牌事件同步
+        socket.on('cardFlipped', (cardInfo) => {
+            const cardElement = document.getElementById(cardInfo.cardId);
+            if (cardElement) {
+                const innerText = cardElement.getAttribute('data-content');
+                cardElement.innerHTML = innerText;
+                cardElement.classList.remove('back');
+                cardElement.classList.add('flipped');
+                const suit = innerText.substring(0, 1);
+                if (suit === '♥' || suit === '♦') {
+                    cardElement.classList.add('red');
+                } else {
+                    cardElement.classList.add('black');
                 }
-            });
+            }
+        });
 
-            // 3. 监听远端用户离开
-            agoraClient.on('user-left', (user) => {
-                updateVoiceStatus(`玩家${user.uid}离开语音`);
-            });
+        // 投票事件同步
+        socket.on('voteStarted', () => { document.getElementById('voteDialog').classList.remove('hidden'); });
+        socket.on('voteResult', (data) => { alert(data.approved ? '✅ 投票通过，同意玩家的牌已公开！' : '❌ 没人同意亮牌。'); });
 
-            // 4. 加入语音频道（直接用扑克房间号）
-            await agoraClient.join(AGORA_APP_ID, roomId, null, null);
-            updateVoiceStatus(`✅ 已加入语音频道：${roomId}`);
+        // --- 核心方法 ---
+        function createRoom() {
+            const playerName = document.getElementById('playerName').value;
+            if (!playerName) { alert('请输入你的名字！'); return; }
             
-            // 5. 显示语音控制UI
-            document.getElementById('voiceControls').classList.remove('hidden');
+            socket.emit('createRoom');
             
-            // 6. 默认不自动开麦，等用户手动点击
-            updateVoiceStatus('请点击「开启麦克风」开始说话');
-
-        } catch (error) {
-            console.error('加入语音频道失败：', error);
-            updateVoiceStatus('❌ 加入语音失败，请检查AppID或网络');
-            // 即使失败也显示控件，让用户看到状态
+            document.getElementById('loginScreen').classList.add('hidden');
+            document.getElementById('gameScreen').classList.remove('hidden');
+            document.getElementById('roomInfo').classList.remove('hidden');
+            document.getElementById('hostControls').classList.remove('hidden');
             document.getElementById('voiceControls').classList.remove('hidden');
         }
-    }
 
-    // 切换麦克风
-    async function toggleMic() {
-        if (!agoraClient) return;
-        const micBtn = document.getElementById('micBtn');
+        function joinRoom() {
+            const playerName = document.getElementById('playerName').value;
+            const roomId = document.getElementById('roomIdInput').value.toUpperCase();
+            if (!playerName) { alert('请输入你的名字！'); return; }
+            if (!roomId) { alert('请输入房间号！'); return; }
 
-        if (!isMicOn) {
+            socket.emit('joinRoom', roomId);
+            
+            document.getElementById('loginScreen').classList.add('hidden');
+            document.getElementById('gameScreen').classList.remove('hidden');
+            document.getElementById('roomInfo').classList.remove('hidden');
+            document.getElementById('voiceControls').classList.remove('hidden');
+        }
+
+        // --- 语音逻辑 ---
+        async function joinVoiceChannel(roomId) {
             try {
-                // 创建本地音频轨道
-                localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack();
-                // 发布到频道
-                await agoraClient.publish(localAudioTrack);
-                isMicOn = true;
+                updateVoiceStatus('🔄 正在请求语音鉴权...');
+                // 确保请求的地址和你的后端保持一致，加上了 /agora-token
+                const tokenRes = await fetch(`https://poker-backend-1xrx.onrender.com/agora-token?channelName=${roomId}`);
+                const tokenData = await tokenRes.json();
+                
+                if (!tokenData.token) throw new Error('未获取到有效 Token');
 
-                // 开启时：按钮变红，提示正在发言
-                micBtn.innerText = '🔴 麦克风：收音中';
-                micBtn.classList.remove('bg-gray-600', 'hover:bg-gray-500');
-                micBtn.classList.add('bg-red-600', 'hover:bg-red-500');
-                updateVoiceStatus('✅ 麦克风已开启');
-            } catch (error) {
-                console.error('开启麦克风失败：', error);
-                alert('请允许浏览器访问麦克风权限！');
-            }
-        } else {
-            // 关闭麦克风
-            if (localAudioTrack) {
-                localAudioTrack.close();
-                await agoraClient.unpublish(localAudioTrack);
-                localAudioTrack = null;
-            }
-            isMicOn = false;
-
-           // 关闭时：按钮恢复灰色
-            micBtn.innerText = '🎙️ 麦克风：已关闭';
-            micBtn.classList.remove('bg-red-600', 'hover:bg-red-500');
-            micBtn.classList.add('bg-gray-600', 'hover:bg-gray-500');
-            updateVoiceStatus('麦克风已关闭');
-        }
-    }
-
-    // 切换扬声器(是否屏蔽他人)
-    function toggleSpeaker() {
-        if (!agoraClient) return;
-        const speakerBtn = document.getElementById('speakerBtn');
-
-        isSpeakerOn = !isSpeakerOn;
-        // 控制所有远端音频的播放状态
-        const remoteAudioTracks = agoraClient.remoteTracks.filter(track => track.kind === 'audio');
-        remoteAudioTracks.forEach(track => {
-            if (isSpeakerOn) {
-                track.play();
-            } else {
-                track.pause();
-            }
-        });
-
-        if (isSpeakerOn) {
-            speakerBtn.innerText = '🔊 听他人：接收中';
-            speakerBtn.classList.remove('bg-gray-600', 'hover:bg-gray-500');
-            speakerBtn.classList.add('bg-green-600', 'hover:bg-green-500');
-            updateVoiceStatus('已恢复接收其他玩家声音');
-        } else {
-            speakerBtn.innerText = '🔇 听他人：已屏蔽';
-            speakerBtn.classList.remove('bg-green-600', 'hover:bg-green-500');
-            speakerBtn.classList.add('bg-gray-600', 'hover:bg-gray-500');
-            updateVoiceStatus('已屏蔽其他玩家声音');
-        }
-    }
-
-    // 更新语音状态
-    function updateVoiceStatus(text) {
-        const statusEl = document.getElementById('voiceStatus');
-        if (statusEl) {
-            statusEl.innerText = `状态：${text}`;
-        }
-        console.log('语音状态：', text);
-    }
-
-    // --- 游戏核心功能 ---
-    function initTable() {
-        document.getElementById('seats').innerHTML = '';
-        document.getElementById('communityArea').innerHTML = '';
-        document.getElementById('deck').innerHTML = '';
-        document.getElementById('dealBtn').innerText = '开始发牌';
-        localDealQueue = [];
-        localCurrentStep = 0;
-        remainingCards = 52;
-        dealtCards = [];
-        createRealDeck();
-        createDeckVisual();
-        createSeats(parseInt(document.getElementById('playerCount').value));
-        initDragAndDrop(); // 初始化拖拽功能
-    }
-
-    function createRealDeck() {
-        realDeck = [];
-        for (let s = 0; s < suits.length; s++) {
-            for (let r = 0; r < ranks.length; r++) {
-                const suit = suits[s];
-                const rank = ranks[r];
-                const color = (suit === '♥' || suit === '♦') ? 'red' : 'black';
-                realDeck.push({
-                    suit: suit,
-                    rank: rank,
-                    color: color,
-                    html: `<span style="color:${color}">${rank}${suit}</span>`
-                });
-            }
-        }
-        shuffleDeck(realDeck);
-        console.log('牌堆初始化完成，共', realDeck.length, '张不重复的牌');
-    }
-
-    function shuffleDeck(arr) {
-        for (let i = arr.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [arr[i], arr[j]] = [arr[j], arr[i]];
-        }
-    }
-
-    function drawCardFromDeck() {
-        if (realDeck.length === 0) {
-            console.error('牌堆已空！');
-            return null;
-        }
-        const card = realDeck.pop();
-        remainingCards = realDeck.length;
-        console.log('从牌堆取牌：', card.rank + card.suit, '剩余', remainingCards, '张');
-        return card;
-    }
-
-    function initTableAndSync() {
-        initTable();
-        const rounds = Array.from(document.querySelectorAll('.round-item')).map(r => ({
-            target: r.querySelector('.round-target').value,
-            count: parseInt(r.querySelector('.round-count').value)
-        }));
-        const config = {
-            playerCount: parseInt(document.getElementById('playerCount').value),
-            direction: document.getElementById('direction').value,
-            enableCommunity: document.getElementById('enableCommunity').checked,
-            cardTheme: document.getElementById('cardTheme').value,
-            rounds: rounds
-        };
-        socket.emit('syncConfig', currentRoomId, config);
-    }
-
-    function createDeckVisual() {
-        const deck = document.getElementById('deck');
-        deck.innerHTML = '';
-        cardTheme = document.getElementById('cardTheme').value;
-        for (let i = 0; i < 52; i++) {
-            const card = document.createElement('div');
-            card.className = 'deck-card';
-            card.style.top = `${i * 0.4}px`;
-            card.style.left = `${i * 0.2}px`;
-            deck.appendChild(card);
-        }
-    }
-
-    function createSeats(count) {
-        const seats = document.getElementById('seats');
-        const table = document.querySelector('.poker-table');
-        const centerX = table.offsetWidth / 2;
-        const centerY = table.offsetHeight / 2;
-        const radius = 240;
-
-        for (let i = 0; i < count; i++) {
-            const angle = (360 / count) * i - 90;
-            const x = centerX + radius * Math.cos(angle * Math.PI / 180);
-            const y = centerY + radius * Math.sin(angle * Math.PI / 180);
-
-            const seat = document.createElement('div');
-            seat.className = 'seat';
-            seat.style.left = `${x}px`;
-            seat.style.top = `${y}px`;
-            seat.id = `seat-${i}`;
-            
-            const isMySeat = (i === mySeatIndex);
-            seat.innerHTML = `
-                <div class="seat-label ${isMySeat ? 'mine' : ''}">
-                    ${isMySeat ? '👤 我 (玩家' + (i+1) + ')' : '玩家 ' + (i+1)}
-                </div>
-                <div class="player-cards" id="player-${i}" data-seat="${i}"></div>
-            `;
-            seats.appendChild(seat);
-        }
-    }
-
-    function addRound() {
-        if (!isHost) return;
-        const container = document.getElementById('roundContainer');
-        const item = document.createElement('div');
-        item.className = 'round-item bg-gray-800 p-3 rounded flex gap-2 items-center';
-        item.innerHTML = `
-            <select class="round-target bg-gray-700 rounded p-1 flex-1">
-                <option value="player">发给玩家</option>
-                <option value="community">发给公共牌区</option>
-            </select>
-            <input type="number" min="1" value="1" class="round-count w-16 bg-gray-700 rounded p-1">
-        `;
-        container.appendChild(item);
-    }
-
-    function loadPreset(type) {
-        if (!isHost) return;
-        const container = document.getElementById('roundContainer');
-        container.innerHTML = '';
-        document.getElementById('enableCommunity').checked = false;
-
-        if (type === 'zhajinhua') {
-            document.getElementById('playerCount').value = 3;
-            container.innerHTML = `
-                <div class="round-item bg-gray-800 p-3 rounded flex gap-2 items-center">
-                    <select class="round-target bg-gray-700 rounded p-1 flex-1"><option value="player">发给玩家</option></select>
-                    <input type="number" value="3" class="round-count w-16 bg-gray-700 rounded p-1">
-                </div>
-            `;
-        }
-        if (type === 'texas') {
-            document.getElementById('playerCount').value = 4;
-            document.getElementById('enableCommunity').checked = true;
-            container.innerHTML = `
-                <div class="round-item bg-gray-800 p-3 rounded flex gap-2 items-center">
-                    <select class="round-target bg-gray-700 rounded p-1 flex-1"><option value="player">发给玩家</option></select>
-                    <input type="number" value="2" class="round-count w-16 bg-gray-700 rounded p-1">
-                </div>
-                <div class="round-item bg-gray-800 p-3 rounded flex gap-2 items-center">
-                    <select class="round-target bg-gray-700 rounded p-1 flex-1"><option value="community">发给公共牌区</option></select>
-                    <input type="number" value="3" class="round-count w-16 bg-gray-700 rounded p-1">
-                </div>
-                <div class="round-item bg-gray-800 p-3 rounded flex gap-2 items-center">
-                    <select class="round-target bg-gray-700 rounded p-1 flex-1"><option value="community">发给公共牌区</option></select>
-                    <input type="number" value="1" class="round-count w-16 bg-gray-700 rounded p-1">
-                </div>
-                <div class="round-item bg-gray-800 p-3 rounded flex gap-2 items-center">
-                    <select class="round-target bg-gray-700 rounded p-1 flex-1"><option value="community">发给公共牌区</option></select>
-                    <input type="number" value="1" class="round-count w-16 bg-gray-700 rounded p-1">
-                </div>
-            `;
-        }
-    }
-
-    // --- 投票系统 ---
-    function startVote() {
-        if (!isHost || !currentRoomId) return;
-        socket.emit('startVote', currentRoomId);
-    }
-
-    function submitVote(approved) {
-        if (hasVoted || !currentRoomId) return;
-        hasVoted = true;
-        socket.emit('submitVote', currentRoomId, { approved: approved, seatIndex: mySeatIndex });
-        document.getElementById('voteButtons').classList.add('hidden');
-        document.getElementById('voteResult').classList.remove('hidden');
-        document.getElementById('voteResult').querySelector('p').innerText = '已提交投票，等待其他玩家...';
-    }
-
-    // --- 翻牌逻辑 ---
-    function requestFlipCard(cardId, ownerSeatIndex) {
-        console.log('点击手牌，卡牌所有者：', ownerSeatIndex, '我的座位：', mySeatIndex, '是否房主：', isHost);
-        const hasRoomId = !!currentRoomId;
-        if (!hasRoomId) {
-            alert('请先加入或创建房间！');
-            return;
-        }
-
-        // 权限判断：自己的牌 或 房主可以翻任意牌
-        const canFlip = (ownerSeatIndex === mySeatIndex) || isHost;
-        if (!canFlip) {
-            console.log('无权限翻牌：不是自己的牌且不是房主');
-            return;
-        }
-
-        // 发送翻牌指令到后端同步
-        socket.emit('flipCard', currentRoomId, {
-            cardId: cardId,
-            seatIndex: mySeatIndex,
-            isHost: isHost
-        });
-    }
-
-    // 投票通过后翻所有牌
-    function flipAllCards() {
-        document.querySelectorAll('.card').forEach(card => {
-            if (!card.classList.contains('flipped')) {
-                const cardId = card.id;
-                // 同步翻牌状态到后端
-                socket.emit('flipCard', currentRoomId, {
-                    cardId: cardId,
-                    seatIndex: mySeatIndex,
-                    isHost: isHost
-                });
-            }
-        });
-    }
-
-    // --- 发牌逻辑 ---
-    function triggerDeal() {
-        if (!isHost || !currentRoomId) return;
-        
-        // 构建发牌队列
-        const rounds = Array.from(document.querySelectorAll('.round-item')).map(r => ({
-            target: r.querySelector('.round-target').value,
-            count: parseInt(r.querySelector('.round-count').value)
-        }));
-        
-        localDealQueue = [];
-        const playerCount = parseInt(document.getElementById('playerCount').value);
-        const direction = document.getElementById('direction').value;
-        
-        // 生成发牌队列
-        rounds.forEach(round => {
-            if (round.target === 'player') {
-                // 给每个玩家发N张牌
-                for (let i = 0; i < round.count; i++) {
-                    for (let seatIdx = 0; seatIdx < playerCount; seatIdx++) {
-                        // 处理发牌方向
-                        const actualSeatIdx = direction === 'clockwise' 
-                            ? seatIdx 
-                            : (playerCount - 1 - seatIdx);
-                        localDealQueue.push({
-                            type: 'player',
-                            seatIdx: actualSeatIdx
-                        });
+                agoraClient = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
+                
+                agoraClient.on('user-published', async (user, mediaType) => {
+                    await agoraClient.subscribe(user, mediaType);
+                    if (mediaType === 'audio') {
+                        const remoteAudioTrack = user.audioTrack;
+                        if (isSpeakerOn) remoteAudioTrack.play();
+                        updateVoiceStatus(`🟢 已连接玩家 ${user.uid} 的语音`);
                     }
+                });
+
+                agoraClient.on('user-left', (user) => {
+                    updateVoiceStatus(`👋 玩家 ${user.uid} 离开语音`);
+                });
+
+                await agoraClient.join(AGORA_APP_ID, roomId, tokenData.token, null);
+                updateVoiceStatus('✅ 频道接入成功，点击上方开启麦克风说话');
+            } catch (error) {
+                console.error('加入语音频道失败：', error);
+                updateVoiceStatus('❌ 加入语音失败: ' + error.message);
+            }
+        }
+
+        async function toggleMic() {
+            if (!agoraClient) return alert('语音尚未连接成功！');
+            const micBtn = document.getElementById('micBtn');
+
+            if (!isMicOn) {
+                try {
+                    localAudioTrack = await AgoraRTC.createMicrophoneAudioTrack();
+                    await agoraClient.publish(localAudioTrack);
+                    isMicOn = true;
+                    micBtn.innerText = '🔴 麦克风：收音中';
+                    micBtn.className = 'host-btn bg-red-600 hover:bg-red-500 text-white transition-colors';
+                    updateVoiceStatus('✅ 麦克风已开启');
+                } catch (error) {
+                    alert('请允许浏览器访问麦克风权限！');
                 }
-            } else if (round.target === 'community' && document.getElementById('enableCommunity').checked) {
-                // 发公共牌
-                for (let i = 0; i < round.count; i++) {
-                    localDealQueue.push({
-                        type: 'community'
+            } else {
+                if (localAudioTrack) {
+                    localAudioTrack.close();
+                    await agoraClient.unpublish(localAudioTrack);
+                    localAudioTrack = null;
+                }
+                isMicOn = false;
+                micBtn.innerText = '🎙️ 麦克风：已关闭';
+                micBtn.className = 'host-btn bg-gray-600 hover:bg-gray-500 text-white transition-colors';
+                updateVoiceStatus('麦克风已关闭');
+            }
+        }
+
+        function toggleSpeaker() {
+            if (!agoraClient) return;
+            const speakerBtn = document.getElementById('speakerBtn');
+            isSpeakerOn = !isSpeakerOn;
+            
+            const remoteAudioTracks = agoraClient.remoteTracks.filter(track => track.kind === 'audio');
+            remoteAudioTracks.forEach(track => isSpeakerOn ? track.play() : track.pause());
+
+            if (isSpeakerOn) {
+                speakerBtn.innerText = '🔊 听他人：接收中';
+                speakerBtn.className = 'host-btn bg-green-600 hover:bg-green-500 text-white transition-colors';
+            } else {
+                speakerBtn.innerText = '🔇 听他人：已屏蔽';
+                speakerBtn.className = 'host-btn bg-gray-600 hover:bg-gray-500 text-white transition-colors';
+            }
+        }
+
+        // --- 游戏界面初始化 ---
+        function initTable() {
+            const table = document.getElementById('pokerTable');
+            table.querySelectorAll('.seat').forEach(s => s.remove());
+            players = [];
+            
+            const numSeats = 8;
+            const rx = 40, ry = 40; 
+            for (let i = 0; i < numSeats; i++) {
+                const angle = (i * (360 / numSeats)) * (Math.PI / 180);
+                const x = 50 + rx * Math.cos(angle);
+                const y = 50 + ry * Math.sin(angle);
+                
+                const seat = document.createElement('div');
+                seat.className = 'seat';
+                seat.id = `seat-${i}`;
+                seat.style.left = `calc(${x}% - 50px)`;
+                seat.style.top = `calc(${y}% - 50px)`;
+                
+                const label = document.createElement('span');
+                label.innerText = `座位 ${i+1}`;
+                label.className = 'mt-auto font-bold';
+                
+                const cardContainer = document.createElement('div');
+                cardContainer.className = 'card-container';
+                cardContainer.id = `player-${i}`;
+                
+                seat.appendChild(cardContainer);
+                seat.appendChild(label);
+                table.appendChild(seat);
+            }
+            initDeck();
+        }
+
+        function updateSeats(count) {
+            players = [];
+            for (let i = 0; i < 8; i++) {
+                const seat = document.getElementById(`seat-${i}`);
+                if (i < count) {
+                    seat.classList.add('occupied');
+                    players.push({ seatIndex: i });
+                    if (i === mySeatIndex) seat.classList.add('my-seat');
+                }
+            }
+        }
+
+        function initDeck() {
+            deck = [];
+            suits.forEach(suit => {
+                values.forEach(value => { deck.push({ suit, value, html: `${suit}${value}` }); });
+            });
+            deck.sort(() => Math.random() - 0.5);
+            document.getElementById('deckCount').innerText = deck.length;
+        }
+
+        // --- 发牌系统重构版 ---
+        function generateLocalDealQueue() {
+            localDealQueue = [];
+            localCurrentStep = 0;
+            const enablePlayer = document.getElementById('enablePlayerDeal').checked;
+            const enableCommunity = document.getElementById('enableCommunityDeal').checked;
+            const seq = document.getElementById('dealSequence').value.split(',');
+
+            seq.forEach(target => {
+                if (target === 'player' && enablePlayer) {
+                    players.forEach(p => {
+                        localDealQueue.push({ type: 'player', target: `player-${p.seatIndex}`, ownerSeatIndex: p.seatIndex });
+                    });
+                } else if (target === 'community' && enableCommunity) {
+                    localDealQueue.push({ type: 'community', target: 'communityArea' });
+                }
+            });
+        }
+
+        function triggerDeal() {
+            if (!isHost) return;
+            if (localDealQueue.length === 0) {
+                generateLocalDealQueue();
+                document.getElementById('dealBtn').innerText = '发牌中...';
+            }
+            processDealQueue();
+        }
+
+        function processDealQueue() {
+            if (localCurrentStep >= localDealQueue.length) {
+                document.getElementById('dealBtn').innerText = '发牌完成';
+                localDealQueue = [];
+                localCurrentStep = 0;
+                return;
+            }
+
+            const dealItem = localDealQueue[localCurrentStep];
+            if (deck.length === 0) { alert('牌堆已空！'); return; }
+            
+            const card = deck.pop();
+            document.getElementById('deckCount').innerText = deck.length;
+
+            let targetId = dealItem.target;
+            let isCommunity = dealItem.type === 'community';
+            let ownerSeatIndex = isCommunity ? -1 : dealItem.ownerSeatIndex;
+            let cardId = `card-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+
+            // 渲染
+            renderCardWithoutAnimation(targetId, isCommunity, card.html, ownerSeatIndex, false, cardId);
+            
+            // 记录并同步
+            dealtCards.push({ cardId, targetId, isCommunity, cardContent: card.html, ownerSeatIndex, isFlipped: false });
+            socket.emit('updateGameState', currentRoomId, { deck, dealtCards });
+
+            localCurrentStep++;
+            setTimeout(processDealQueue, 200); // 间隔发牌效果
+        }
+
+        function renderCardWithoutAnimation(targetId, isCommunity, cardContent, ownerSeatIndex, isFlipped, overrideCardId = null) {
+            const targetEl = document.getElementById(targetId);
+            if (!targetEl) return;
+
+            const cardElement = document.createElement('div');
+            cardElement.className = 'card back';
+            cardElement.id = overrideCardId || `card-${Date.now()}`;
+            cardElement.setAttribute('data-content', cardContent);
+            
+            if (isFlipped) {
+                cardElement.classList.remove('back');
+                cardElement.classList.add('flipped');
+                cardElement.innerHTML = cardContent;
+                if (cardContent.includes('♥') || cardContent.includes('♦')) cardElement.classList.add('red');
+            } else if (!isCommunity && ownerSeatIndex === mySeatIndex) {
+                cardElement.classList.remove('back');
+                cardElement.innerHTML = cardContent;
+                if (cardContent.includes('♥') || cardContent.includes('♦')) cardElement.classList.add('red');
+            }
+
+            // 翻牌事件绑定
+            cardElement.onclick = () => {
+                if (isHost || ownerSeatIndex === mySeatIndex || isCommunity) {
+                    socket.emit('flipCard', currentRoomId, {
+                        cardId: cardElement.id,
+                        ownerSeatIndex: ownerSeatIndex
                     });
                 }
-            }
-        });
+            };
 
-        document.getElementById('dealBtn').innerText = '发牌中...';
-        document.getElementById('dealBtn').classList.add('btn-disabled');
-        processDealQueue();
-    }
-// 修复后的发牌队列处理 (解决无法同步的问题)
-    function processDealQueue() {
-        if (localCurrentStep >= localDealQueue.length) {
-            // 发牌全部完成
-            document.getElementById('dealBtn').innerText = '发牌完成';
-            return;
+            targetEl.appendChild(cardElement);
         }
 
-        const dealItem = localDealQueue[localCurrentStep];
-        const card = drawCardFromDeck();
-        if (!card) {
-            alert('牌堆已空，发牌终止！');
-            return;
-        }
-
-        let targetId, isCommunity, ownerSeatIndex;
-        if (dealItem.type === 'player') {
-            targetId = `player-${dealItem.seatIdx}`;
-            isCommunity = false;
-            ownerSeatIndex = dealItem.seatIdx;
-        } else {
-            targetId = 'communityArea';
-            isCommunity = true;
-            ownerSeatIndex = -1;
-        }
-
-        // 渲染卡牌
-        const cardId = `card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        renderCardWithoutAnimation(targetId, isCommunity, card.html, ownerSeatIndex, false);
-        
-        // 记录发牌状态
-        dealtCards.push({
-            cardId: cardId,
-            targetId: targetId,
-            isCommunity: isCommunity,
-            cardContent: card.html,
-            ownerSeatIndex: ownerSeatIndex,
-            isFlipped: false
-        });
-
-        // 【关键修复】将原先的 syncGameState 改为 updateGameState
-        // 并且放到每次发牌的逻辑里，让其他人能看到实时的发牌过程！
-        socket.emit('updateGameState', currentRoomId, {
-            dealtCards: dealtCards
-        });
-
-        // 逐步发牌（加延迟更直观）
-        localCurrentStep++;
-        setTimeout(processDealQueue, 200);
-    }
-    // 无动画渲染卡牌（用于同步）
-    function renderCardWithoutAnimation(targetId, isCommunity, cardContent, ownerSeatIndex, isFlipped) {
-        const targetEl = document.getElementById(targetId);
-        if (!targetEl) return;
-
-        const cardId = `card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        const isMyCard = (ownerSeatIndex === mySeatIndex);
-        const isHost = window.isHost;
-
-        // 创建卡牌DOM
-        const card = document.createElement('div');
-        card.id = cardId;
-        card.className = `card ${isFlipped ? 'flipped' : ''}`;
-        card.dataset.owner = ownerSeatIndex;
-        
-        // 设置卡牌样式（主题）
-        const cardTheme = document.getElementById('cardTheme').value;
-        const backClass = cardTheme === 'tarot' ? 'card-back-tarot' : 'card-back';
-        const frontClass = cardTheme === 'tarot' ? 'card-front-tarot' : 'card-front';
-
-        // 卡牌内容
-        card.innerHTML = `
-            <div class="card-face ${backClass}"></div>
-            <div class="card-face ${frontClass}">${cardContent}</div>
-        `;
-
-        // 设置翻牌权限样式
-        if (isMyCard) {
-            card.classList.add('can-flip');
-        } else if (isHost) {
-            card.classList.add('host-can-flip');
-        } else {
-            card.classList.add('cannot-flip');
-        }
-
-        // 绑定翻牌事件
-        card.addEventListener('click', () => {
-            requestFlipCard(cardId, ownerSeatIndex);
-        });
-
-        // 添加到目标容器
-        targetEl.appendChild(card);
-
-        // 设置拖拽属性（仅公共牌可拖拽）
-        if (isCommunity && isHost) {
-            card.draggable = true;
-        }
-
-        return cardId;
-    }
-
-    // --- 拖拽功能 ---
-    function initDragAndDrop() {
-        // 拖拽开始
-        document.addEventListener('dragstart', (e) => {
-            if (e.target.classList.contains('card')) {
-                e.target.classList.add('dragging');
-                e.dataTransfer.setData('text/plain', e.target.id);
-            }
-        });
-
-        // 拖拽结束
-        document.addEventListener('dragend', (e) => {
-            if (e.target.classList.contains('card')) {
-                e.target.classList.remove('dragging');
-                document.querySelectorAll('.seat').forEach(seat => {
-                    seat.classList.remove('drag-target');
-                });
-            }
-        });
-
-        // 拖拽经过
-        document.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            const seat = e.target.closest('.seat');
-            if (seat && isHost) {
-                document.querySelectorAll('.seat').forEach(s => s.classList.remove('drag-target'));
-                seat.classList.add('drag-target');
-            }
-        });
-
-        // 拖拽放下
-        document.addEventListener('drop', (e) => {
-            e.preventDefault();
+        function resetGame() {
             if (!isHost) return;
+            initDeck();
+            dealtCards = [];
+            localDealQueue = [];
+            localCurrentStep = 0;
+            document.getElementById('dealBtn').innerText = '开始发牌';
+            socket.emit('updateGameState', currentRoomId, { deck, dealtCards });
+        }
 
-            const cardId = e.dataTransfer.getData('text/plain');
-            const card = document.getElementById(cardId);
-            const seat = e.target.closest('.seat');
-            
-            if (card && seat) {
-                const seatIdx = seat.id.split('-')[1];
-                const targetPlayerEl = document.getElementById(`player-${seatIdx}`);
-                
-                // 移动卡牌
-                targetPlayerEl.appendChild(card);
-                
-                // 同步到后端
-                socket.emit('moveCard', currentRoomId, {
-                    cardId: cardId,
-                    targetId: `player-${seatIdx}`,
-                    isCommunity: false,
-                    ownerSeatIndex: parseInt(seatIdx),
-                    hostSeatIndex: mySeatIndex
-                });
+        function startVote() { if (isHost) socket.emit('startVote', currentRoomId); }
+        function submitVote(approved) {
+            socket.emit('submitVote', currentRoomId, { approved });
+            document.getElementById('voteDialog').classList.add('hidden');
+        }
 
-                // 更新本地状态
-                const cardIndex = dealtCards.findIndex(item => item.cardId === cardId);
-                if (cardIndex !== -1) {
-                    dealtCards[cardIndex].targetId = `player-${seatIdx}`;
-                    dealtCards[cardIndex].isCommunity = false;
-                    dealtCards[cardIndex].ownerSeatIndex = parseInt(seatIdx);
-                }
+        function copyRoomLink() {
+            const link = `${window.location.origin}${window.location.pathname}?room=${currentRoomId}`;
+            navigator.clipboard.writeText(link).then(() => alert('邀请链接已复制！'));
+        }
 
-                document.querySelectorAll('.seat').forEach(s => s.classList.remove('drag-target'));
+        // 统一在页面加载完后执行
+        window.onload = () => {
+            initTable(); // 极其关键：一定要先初始化牌桌和座位
+            const urlParams = new URLSearchParams(window.location.search);
+            const roomId = urlParams.get('room');
+            if (roomId) {
+                document.getElementById('roomIdInput').value = roomId;
             }
-        });
-    }
+        };
 
-    // 页面关闭时清理资源
-    window.onbeforeunload = async () => {
-        if (agoraClient) {
-            if (localAudioTrack) {
-                localAudioTrack.close();
-            }
-            await agoraClient.leave();
-        }
-        if (currentRoomId && inRoom) {
-            socket.emit('leaveRoom', currentRoomId, { seatIndex: mySeatIndex });
-        }
-    };
-
-    // 初始化时解析URL中的房间号
-    window.onload = () => {
-        const urlParams = new URLSearchParams(window.location.search);
-        const roomId = urlParams.get('room');
-        if (roomId) {
-            document.getElementById('roomIdInput').value = roomId;
-            setTimeout(() => {
-                joinRoom();
-            }, 500);
-        }
-    };
-</script>
+        window.onbeforeunload = async () => {
+            if (agoraClient && localAudioTrack) localAudioTrack.close();
+        };
+    </script>
 </body>
 </html>

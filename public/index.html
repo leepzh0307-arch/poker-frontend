@@ -11,22 +11,23 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { background: #1a1a2e; font-family: "Microsoft YaHei", sans-serif; padding: 20px; }
         .poker-table {
+            /* 初始背景图：table1.jpg */
             background: url('images/table-bg1.jpg') no-repeat center center;
-            background-size: cover;
-            border-radius: 0;
+            background-size: cover; /* 保持图片比例并覆盖容器 */
+            border-radius: 0; /* 去掉圆角，避免裁切图片 */
             box-shadow: 0 0 50px rgba(0,0,0,0.8) inset, 0 0 30px #000;
             position: relative;
             overflow: visible !important;
             width: 100%;
-            max-width: 1000px;
+            max-width: 1000px; /* 可选：限制牌桌最大宽度，适配大屏 */
             height: auto;
-            min-height: 500px;
-            aspect-ratio: 2 / 1;
+            min-height: 500px; /* 保证最小显示高度 */
+            aspect-ratio: 2 / 1; /* 强制2:1比例，和你的图片一致 */
             margin: 0 auto;
         }
         .card {
-            width: 65px;
-            aspect-ratio: 951 / 1346;
+            width: 65px; /* 宽度可自定义，高度由aspect-ratio自动计算 */
+            aspect-ratio: 951 / 1346; /* 强制951:1346比例，不可改动 */
             background: white;
             border-radius: 6px;
             border: 1px solid #ccc;
@@ -41,31 +42,35 @@
             cursor: pointer;
             user-select: none;
             transition: transform 0.5s;
-            transform-origin: center center;
-            background-size: cover;
-            background-position: center;
+            transform-origin: center center; /* 缩放原点，保证放大位置不变 */
+            background-size: cover; /* 卡背图片覆盖整个卡片 */
+            background-position: center; /* 卡背图片居中 */
         }
         .card.red { color: #d32f2f !important; }
         .card.black { color: #212121 !important; }
         .card.back {
+            /* 移除原有渐变背景，替换为默认卡背图片 */
             background-image: url('images/poker-back1.jpg'); 
             color: transparent;
         }
         .card.flipped { background: white !important; color: inherit; }
 
+        /* 玩家手牌：保留原有重叠效果 + 默认缩小0.75倍 */
         .card-container .card {
-            margin: -20px -15px 0 0;
+            margin: -20px -15px 0 0; /* 恢复玩家手牌的重叠效果 */
             transform: scale(0.75);
         }
 
+        /* 公共区牌：无重叠 + 正常大小 */
         .community-cards .card {
-            margin: 0 5px;
+            margin: 0 5px; /* 增加间距，避免遮挡 */
             transform: scale(1);
         }
 
+        /* 玩家手牌放大样式（点击触发） */
         .card-container .card.enlarged {
-            transform: scale(1.5);
-            z-index: 30;
+            transform: scale(1.5); /* 1.5倍放大 */
+            z-index: 30; /* 放大后层级最高，避免被遮挡 */
         }
 
         .community-cards {
@@ -74,8 +79,8 @@
             transform: translate(-50%, -50%);
             display: flex; 
             gap: 5px;
-            width: fit-content;
-            min-width: 350px;
+            width: fit-content; /* 自适应宽度，兼容多牌显示 */
+            min-width: 350px; /* 保留最小宽度，保证布局稳定 */
             height: 100px;
             justify-content: center; align-items: center;
             background: rgba(0,0,0,0.2); border-radius: 10px; padding: 10px;
@@ -85,6 +90,10 @@
             position: absolute;
             width: 100px;
             height: 100px;
+            /* 🔴 隐藏灰色圆圈：删除或注释掉下面这几行 */
+            /* background: rgba(100, 100, 100, 0.5); */
+            /* border: 2px dashed rgba(255,255,255,0.3); */
+            /* border-radius: 50%; */
             display: flex;
             flex-direction: column;
             justify-content: center;
@@ -97,10 +106,21 @@
         .seat.occupied { border-color: #4CAF50; background: rgba(76, 175, 80, 0.2); }
         .seat.my-seat { border-color: #FFC107; background: rgba(255, 193, 7, 0.2); box-shadow: 0 0 15px #FFC107; }
         .card-container { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); display: flex; flex-wrap: wrap; justify-content: center; z-index: 10; width: 150px;}
-        
+        .community-cards {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            display: flex; gap: 5px;
+            width: 350px; height: 100px;
+            justify-content: center; align-items: center;
+            background: rgba(0,0,0,0.2); border-radius: 10px; padding: 10px;
+            z-index: 5;
+        }
+
+        /* 牌堆（左上角的牌堆数）位置调整 */
         .dealer-area { 
             position: absolute; 
-            top: 38%; 
+            top: 38%; /* 调整垂直位置，比如8%/12% */
             left: 20%; 
             transform: translateX(-50%); 
             text-align: center; 
@@ -158,6 +178,7 @@
         .status-offline { background: #d32f2f; }
         .status-online { background: #4CAF50; display: none; }
 
+        /* ========== 新增：登录页视频背景样式 ========== */
         #loginBackgroundContainer {
             position: fixed;
             top: 0;
@@ -167,17 +188,20 @@
             z-index: 0;
         }
 
+        /* 视频样式：铺满屏幕且保持比例 */
         #loginBgVideo {
             min-width: 100%;
             min-height: 100%;
-            object-fit: cover;
+            object-fit: cover; /* 关键：视频自适应容器，不拉伸 */
         }
 
+        /* 登录页容器优化（如果Tailwind不够用，补充原生CSS） */
         #loginScreen {
             box-shadow: 0 0 30px rgba(0, 0, 0, 0.8);
             border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
+        /* 适配移动端：视频背景不遮挡内容 */
         @media (max-width: 768px) {
             #loginScreen {
                 margin-top: 50px;
@@ -186,10 +210,11 @@
             }
     
             #loginBgVideo {
-                object-position: center;
+                object-position: center; /* 移动端视频居中显示 */
             }
         }
 
+        /* 游戏页显示时，隐藏登录背景 */
         #gameScreen:not(.hidden) + #loginBackgroundContainer,
         #gameScreen:not(.hidden) + #loginScreen {
             display: none;
@@ -199,19 +224,24 @@
 <body>
     <div id="networkStatus" class="network-status status-offline">🔴 服务器连接中...</div>
 
+    <!-- 新增：登录页视频背景容器 -->
     <div id="loginBackgroundContainer" class="fixed inset-0 z-0 overflow-hidden">
       <video 
         id="loginBgVideo"
         class="absolute w-full h-full object-cover"
         autoplay loop muted playsinline preload="auto"
       >
+        <!-- 多格式兼容：MP4为主，WebM备选 -->
         <source src="images/login-bg.mp4" type="video/mp4">
         <source src="images/login-bg.webm" type="video/webm">
+        <!-- 降级方案：视频加载失败时显示静态图 -->
         <img src="images/login-fallback.jpg" class="w-full h-full object-cover" alt="登录背景">
       </video>
+      <!-- 视频遮罩层：提升文字可读性 -->
       <div class="absolute inset-0 bg-black/50"></div>
     </div>
 
+    <!-- 原有登录页容器：修改样式，添加z-index和相对定位 -->
     <div id="loginScreen" class="bg-gray-800/80 backdrop-blur-md p-8 rounded-xl shadow-2xl w-full max-w-md text-center mx-auto mt-20 relative z-10">
       <h1 class="text-3xl font-bold text-white mb-6">♠️ 德州扑克联机发牌 ♥️</h1>
       <input type="text" id="playerName" placeholder="输入你的昵称" class="w-full p-3 mb-4 rounded bg-gray-700/90 text-white border border-gray-600 focus:outline-none focus:border-yellow-400">
@@ -235,6 +265,7 @@
                 <span class="ml-4 text-gray-400" id="playerCount">在线玩家: 1</span>
             </div>
             <div class="flex gap-2">
+                   <!-- 新增：切换背景按钮 -->
                    <button onclick="switchTableBg()" class="bg-purple-600 hover:bg-purple-500 px-4 py-2 rounded">切换牌桌背景</button>
                    <button onclick="copyRoomLink()" class="bg-gray-600 hover:bg-gray-500 px-4 py-2 rounded">复制邀请链接</button>
         </div>
@@ -271,7 +302,7 @@
                     </div>
                 </div>
             </div>
-            <p class="text-xs text-gray-400 mt-2">提示：配置好上方模块后，点击“发牌”逐张发放。房主点击任意牌强制公开，玩家点击自己的牌仅自己可见。房主可拖拽公共牌至玩家手牌区。</p>
+            <p class="text-xs text-gray-400 mt-2">提示：配置好上方模块后，点击“发牌”逐张发放。房主点击任意牌强制公开，玩家点击自己的牌仅自己可见。</p>
         </div>
 
         <div id="voiceControls" class="voice-controls hidden">
@@ -290,35 +321,39 @@
 
     <script>
         const SERVER_URL = 'https://poker-backend-1xrx.onrender.com'; 
+        // 新增：牌桌背景切换变量（1=table1-bg.jpg，2=table2-bg.jpg）
         let currentTableBg = 1;
 
+        // 核心：定义两张图片的手牌区（座位）位置（百分比，适配2:1牌桌）
+        // 👉 你需要根据自己的图片调整每个座位的 x/y 百分比！
         const tableSeatPositions = {
-               1: [
-                    {x: 25, y: 90},
-                    {x: 5, y: 65},
-                    {x: 5, y: 35},
-                    {x: 25, y: 0},
-                    {x: 50, y: 0},
-                    {x: 75, y: 0},
-                    {x: 95, y: 35},
-                    {x: 95, y: 65},
-                    {x: 75, y: 90},
-                    {x: 50, y: 90}
+               1: [ // table-bg1.jpg 的10个座位位置（x=水平百分比，y=垂直百分比）
+                    {x: 25, y: 90}, // 座位1
+                    {x: 5, y: 65}, // 座位2 
+                    {x: 5, y: 35}, // 座位3 
+                    {x: 25, y: 0}, // 座位4 
+                    {x: 50, y: 0}, // 座位5 
+                    {x: 75, y: 0}, // 座位6 
+                    {x: 95, y: 35}, // 座位7 
+                    {x: 95, y: 65}, // 座位8 
+                    {x: 75, y: 90}, // 座位9 
+                    {x: 50, y: 90}  // 座位10
                ],
-               2: [
-                    {x: 25, y: 90},
-                    {x: 5, y: 65},
-                    {x: 5, y: 35},
-                    {x: 25, y: 0},
-                    {x: 50, y: 0},
-                    {x: 75, y: 0},
-                    {x: 95, y: 35},
-                    {x: 95, y: 65},
-                    {x: 75, y: 90},
-                    {x: 50, y: 90}
+               2: [ // table-bg2.jpg 的10个座位位置（根据你的图片修改）
+                    {x: 25, y: 90}, // 座位1
+                    {x: 5, y: 65}, // 座位2 
+                    {x: 5, y: 35}, // 座位3 
+                    {x: 25, y: 0}, // 座位4 
+                    {x: 50, y: 0}, // 座位5 
+                    {x: 75, y: 0}, // 座位6 
+                    {x: 95, y: 35}, // 座位7 
+                    {x: 95, y: 65}, // 座位8 
+                    {x: 75, y: 90}, // 座位9 
+                    {x: 50, y: 90}  // 座位10
                ]
         };
 
+        // 切换牌桌背景的函数
         function switchTableBg() {
             const tableEl = document.getElementById('pokerTable');
             if (!tableEl) {
@@ -326,12 +361,16 @@
                 return;
             }
             currentTableBg = currentTableBg === 1 ? 2 : 1;
+            // 切换桌布背景
             const newBgUrl = `url('images/table-bg${currentTableBg}.jpg')`;
             tableEl.style.backgroundImage = newBgUrl;
+            // 切换对应卡背图片
             const cardBackUrl = `url('images/poker-back${currentTableBg}.jpg')`;
+            // 1. 修改已存在的卡背图片
             document.querySelectorAll('.card.back').forEach(card => {
                    card.style.backgroundImage = cardBackUrl;
             });
+            // 2. 设置全局样式，确保新创建的卡背也使用对应图片
             const styleId = 'card-back-style';
             let styleEl = document.getElementById(styleId);
             if (!styleEl) {
@@ -341,16 +380,18 @@
                 }
             styleEl.innerHTML = `.card.back { background-image: ${cardBackUrl} !important; }`;
 
-            console.log('已切换背景为:', newBgUrl);
+            console.log('已切换背景为:', newBgUrl); // 控制台会打印切换的路径
             updateSeatPositions(currentTableBg);
         }
 
+        // 更新座位位置的函数（适配当前背景图）
         function updateSeatPositions(tableNum) {
             const seatPositions = tableSeatPositions[tableNum];
             for (let i = 0; i < 8; i++) {
                 const seat = document.getElementById(`seat-${i}`);
                 if (!seat) continue;
                 const pos = seatPositions[i];
+                // 减去50px是让座位（100px宽高）居中在目标位置
                 seat.style.left = `calc(${pos.x}% - 50px)`;
                 seat.style.top = `calc(${pos.y}% - 50px)`;
             }
@@ -499,48 +540,9 @@
                     }
                 }
             });
-
-            socket.on('cardMoved', (moveInfo) => {
-                const cardElement = document.getElementById(moveInfo.cardId);
-                if (!cardElement) return;
-
-                const oldParent = cardElement.parentElement;
-                if (oldParent) oldParent.removeChild(cardElement);
-
-                const targetContainer = document.getElementById(moveInfo.targetId);
-                if (targetContainer) {
-                    targetContainer.appendChild(cardElement);
-                }
-
-                cardElement.classList.remove('back');
-                cardElement.classList.add('flipped');
-                const content = cardElement.getAttribute('data-content');
-                if (content) {
-                    cardElement.innerHTML = content;
-                    if (content.includes('♥') || content.includes('♦')) {
-                        cardElement.classList.add('red');
-                    } else {
-                        cardElement.classList.add('black');
-                    }
-                }
-
-                const cardData = dealtCards.find(c => c.cardId === moveInfo.cardId);
-                if (cardData) {
-                    cardData.targetId = moveInfo.targetId;
-                    cardData.isCommunity = moveInfo.isCommunity;
-                    cardData.ownerSeatIndex = moveInfo.ownerSeatIndex;
-                    cardData.isFlipped = true;
-                }
-            });
-        }
-
-        function hideLoginBackground() {
-          const bgContainer = document.getElementById('loginBackgroundContainer');
-          if (bgContainer) bgContainer.style.display = 'none';
         }
 
         function createRoom() {
-            hideLoginBackground();
             if(!socket) initSocket();
             
             const playerName = document.getElementById('playerName').value;
@@ -556,7 +558,6 @@
         }
 
         function joinRoom() {
-            hideLoginBackground();
             if(!socket) initSocket();
             
             const playerName = document.getElementById('playerName').value;
@@ -669,6 +670,7 @@
             players = [];
             
             const numSeats = 10;
+            // 初始加载table-bg1的座位位置
             const seatPositions = tableSeatPositions[1];
     
             for (let i = 0; i < numSeats; i++) {
@@ -676,6 +678,7 @@
                   const seat = document.createElement('div');
                   seat.className = 'seat';
                   seat.id = `seat-${i}`;
+                  // 基于图片的百分比定位座位
                   seat.style.left = `calc(${pos.x}% - 50px)`;
                   seat.style.top = `calc(${pos.y}% - 50px)`;
         
@@ -686,30 +689,6 @@
                   const cardContainer = document.createElement('div');
                   cardContainer.className = 'card-container';
                   cardContainer.id = `player-${i}`;
-
-                  cardContainer.addEventListener('dragover', (e) => {
-                      e.preventDefault();
-                  });
-
-                  cardContainer.addEventListener('drop', (e) => {
-                      e.preventDefault();
-                      if (!isHost) return;
-
-                      const cardId = e.dataTransfer.getData('text/plain');
-                      if (!cardId) return;
-
-                      const targetSeatIndex = parseInt(cardContainer.id.split('-')[1]);
-                      const targetId = cardContainer.id;
-
-                      if (socket && socket.connected) {
-                          socket.emit('moveCard', currentRoomId, {
-                              cardId: cardId,
-                              targetId: targetId,
-                              ownerSeatIndex: targetSeatIndex,
-                              isCommunity: false
-                          });
-                      }
-                  });
         
                   const revealBtn = document.createElement('button');
                   revealBtn.className = 'reveal-btn hidden';
@@ -722,6 +701,7 @@
                   table.appendChild(seat);
             }
 
+            // 新增：初始化默认卡背样式（poker-back1.jpg）
             const styleId = 'card-back-style';
             let styleEl = document.getElementById(styleId);
             if (!styleEl) {
@@ -940,24 +920,20 @@
                     cardElement.classList.add('black');
                 }
             }
-
-            if (isCommunity && isHost) {
-                cardElement.draggable = true;
-                cardElement.addEventListener('dragstart', (e) => {
-                    e.dataTransfer.setData('text/plain', cardElement.id);
-                });
-            }
-
+            // 点击逻辑（先处理缩放，再处理翻牌）
             cardElement.onclick = () => {
+                // 仅对自己的手牌生效缩放
                 if (isMine && !isCommunity) {
-                    cardElement.classList.toggle('enlarged');
-                }
+            cardElement.classList.toggle('enlarged'); // 切换放大/缩小状态
+        }
 
+                // 房主强制公开牌逻辑
                 if (isHost) {
                     if(socket) socket.emit('flipCard', currentRoomId, { cardId: cardElement.id, isPublic: true });
                     return;
                 }
 
+                // 玩家翻自己手牌逻辑（仅未翻牌时生效）
                 if (isMine && !isFlipped && !cardElement.classList.contains('flipped')) {
                     localFlippedCards.add(cardElement.id);
                     cardElement.classList.remove('back');
@@ -1009,6 +985,7 @@
         window.onload = () => {
             initTable();
             
+            // 新增：视频背景容错
               const videoEl = document.getElementById('loginBgVideo');
               videoEl.onerror = () => {
                 videoEl.style.display = 'none';
@@ -1023,6 +1000,45 @@
             }
         };
 
+        // 新增：创建/加入房间时，隐藏视频背景
+        function hideLoginBackground() {
+          const bgContainer = document.getElementById('loginBackgroundContainer');
+          if (bgContainer) bgContainer.style.display = 'none';
+        }
+
+        // 修改原有createRoom和joinRoom函数，添加隐藏视频逻辑
+        function createRoom() {
+          hideLoginBackground(); // 新增这行
+          if(!socket) initSocket();
+  
+          const playerName = document.getElementById('playerName').value;
+          if (!playerName) { alert('请输入你的名字！'); return; }
+  
+          socket.emit('createRoom');
+  
+          document.getElementById('loginScreen').classList.add('hidden');
+          document.getElementById('gameScreen').classList.remove('hidden');
+          document.getElementById('roomInfo').classList.remove('hidden');
+          document.getElementById('hostControls').classList.remove('hidden');
+          document.getElementById('voiceControls').classList.remove('hidden');
+        }
+
+        function joinRoom() {
+          hideLoginBackground(); // 新增这行
+          if(!socket) initSocket();
+  
+          const playerName = document.getElementById('playerName').value;
+          const roomId = document.getElementById('roomIdInput').value.toUpperCase();
+          if (!playerName) { alert('请输入你的名字！'); return; }
+          if (!roomId) { alert('请输入房间号！'); return; }
+
+          socket.emit('joinRoom', roomId);
+  
+          document.getElementById('loginScreen').classList.add('hidden');
+          document.getElementById('gameScreen').classList.remove('hidden');
+          document.getElementById('roomInfo').classList.remove('hidden');
+          document.getElementById('voiceControls').classList.remove('hidden');
+        }
         window.onbeforeunload = async () => {
             if (agoraClient && localAudioTrack) localAudioTrack.close();
         };
